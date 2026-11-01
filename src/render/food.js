@@ -195,14 +195,14 @@ const MAKE = {
       displace(ch, (v) => v.multiplyScalar(1 + noise(v.x * 9 + i, v.y * 9, v.z * 9) * 0.25));
       ch.scale(1, 0.72, 1);
       ch.translate(Math.cos(a) * r, top(r) + 0.01, Math.sin(a) * r);
-      chips.push(colorize(ch, (c, x, y) => c.copy(C(y > top(r) + 0.05 ? '#5a3220' : '#3a1f12'))));
+      chips.push(colorize(ch, (c, x, y) => c.copy(C(y > top(r) + 0.05 ? '#4a2c1c' : '#2c1a10'))));
     }
     colorize(g, (c, x, y, z) => {
-      c.copy(C('#b88d60'));
-      c.lerp(C('#dcbc8e'), Math.max(0, noise(x * 3, y, z * 3)) * 0.6);
+      c.copy(C('#c8a06a'));
+      c.lerp(C('#e8cd9c'), Math.max(0, noise(x * 3, y, z * 3)) * 0.6);
       const r = Math.hypot(x, z);
-      if (r > 0.78) c.lerp(C('#8f6440'), Math.min(1, (r - 0.78) * 3));
-      if (y < 0.12) c.lerp(C('#8a5428'), 0.6);
+      if (r > 0.78) c.lerp(C('#9b7044'), Math.min(1, (r - 0.78) * 3));
+      if (y < 0.12) c.lerp(C('#8a5f36'), 0.6);
     });
     const all = mergeGeometries([g.toNonIndexed(), ...chips.map((c) => c.toNonIndexed())]);
     return { geo: all, mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 }) };

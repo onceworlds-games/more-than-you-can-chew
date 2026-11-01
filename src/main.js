@@ -1067,8 +1067,11 @@ export async function boot() {
     };
   }
 
-  function frame(now) {
+  function frame() {
     requestAnimationFrame(frame);
+    // The clock, not the frame's timestamp: some browsers (and recorders) hand out timestamps that step back and forth,
+    // and every backward step would come back as extra time.
+    const now = Math.max(last, performance.now());
     S.camTarget = null;
     let dt = (now - last) / 1000;
     if (dev) {
