@@ -12,7 +12,7 @@ What says it with no words: eight burrows round a gingham blanket, each with a h
 number; hamsters whose cheeks balloon as they eat, waddling slower and slower back to their holes; food tumbling out into the
 heap with a count-up; a hamster that ate one seed too many going POP and spraying everything across the blanket.
 
-## The first 60 seconds
+## The first minute
 
 | Time | What happens | Hint (2-5 words, once) |
 |---|---|---|

@@ -78,54 +78,69 @@ function frame(r, w, cx, cy, z, scene = {}) {
 function cover(r, fx, W, H) {
   const w = playedWorld(0, 'poster:cover', 46);
   const [gus, pepper, mabel, dot, rocco, fig, bea, clem] = w.hams;
-  const cx = 820;
-  const cy = 380;
-  clearAround(w, 900, 420, 260);
-  // Gus, cheeks far past full, reaching for one more cookie; Pepper dashing in.
-  place(gus, 880, 410, -0.2, { fill: 132, speed: 80 });
-  place(pepper, 745, 505, -0.55, { fill: 20, speed: 520, dash: true });
-  place(mabel, 905, 150, -Math.PI / 2, { fill: 0 });
-  place(dot, 1120, 520, Math.PI * 0.85, { fill: 46, speed: 160 });
-  place(rocco, 1290, 300, 2.6, { fill: 78, speed: 120 });
-  place(fig, 560, 330, 0.3, { fill: 30, speed: 180 });
-  place(bea, 620, 700, -0.9, { fill: 10, speed: 200 });
-  place(clem, 1500, 640, 3.4, { fill: 60, speed: 140 });
-  food(w, 5, 975, 392);
-  food(w, 4, 1010, 470);
-  food(w, 3, 830, 330);
-  food(w, 0, 960, 330);
-  food(w, 0, 940, 350);
-  food(w, 1, 1065, 395);
-  food(w, 2, 790, 470);
-  food(w, 0, 690, 420);
+  // The camera sees x 530-1330, y 55-505: Mabel's burrow at the top, the logo over the bottom left.
+  const cx = 930;
+  const cy = 280;
+  const z = 1.6;
+  clearAround(w, 1000, 280, 420);
+  // Gus, cheeks far past full, eyeing one more cookie; Pepper dashing at him; Mabel taking a load home.
+  place(gus, 1095, 262, Math.PI + 0.22, { fill: 134, speed: 30 });
+  place(pepper, 1235, 400, -2.36, { fill: 22, speed: 520, dash: true });
+  place(mabel, 905, 168, -Math.PI / 2, { fill: 92, speed: 110 });
+  place(dot, 700, 215, 0.25, { fill: 40, speed: 150 });
+  place(fig, 1250, 130, 2.5, { fill: 20, speed: 180 });
+  place(rocco, 805, 320, -0.4, { fill: 66, speed: 140 });
+  place(bea, 200, 950, 0, {});
+  place(clem, 1600, 950, 0, {});
   mabel.heap = 412;
-  w.byId.get(w.hams[1].id).heap = 520;
-  fx.dust(735, 520, 6, 14);
+  const spots = [
+    [5, 1020, 248],
+    [3, 975, 330],
+    [0, 960, 214], [0, 978, 202], [0, 948, 196], [0, 990, 226],
+    [1, 1160, 205], [1, 1180, 228],
+    [2, 1030, 400], [2, 1062, 418],
+    [4, 880, 410],
+    [3, 1290, 260],
+    [0, 760, 160], [0, 775, 178], [0, 742, 182],
+    [2, 690, 290],
+    [6, 1150, 330],
+    [4, 610, 140],
+    [1, 1220, 470],
+    [3, 1300, 340],
+  ];
+  for (const [t, x, y] of spots) food(w, t, x, y);
+  fx.dust(1265, 430, 8, 16);
   fx.step(0.12);
-  settleAnims(r, w, { [gus.id]: { wob: 0.5 } });
-  frame(r, w, cx, cy, 1.22, { leader: pepper.id });
-  logo(r.ctx, 48, H - 250, 540);
+  settleAnims(r, w, { [gus.id]: { wob: 0.6 } });
+  frame(r, w, cx, cy, z, { leader: mabel.id });
+  logo(r.ctx, 40, H - 246, 560);
 }
 
 function action(r, fx) {
   const w = playedWorld(1, 'poster:action', 70);
-  const [gus, pepper] = w.hams;
-  clearAround(w, 900, 760, 200);
-  place(gus, 900, 760, 0.4, { fill: 0, dizzy: true });
-  place(pepper, 832, 812, -0.6, { fill: 24, speed: 200 });
+  const [gus, pepper, mabel, dot, ...rest] = w.hams;
+  const X = 1050;
+  const Y = 760;
+  clearAround(w, X, Y, 330);
+  rest.forEach((h, i) => place(h, 200 + i * 60, 1100, 0, {}));
+  place(gus, X, Y, 0.4, { fill: 0, dizzy: true });
+  place(pepper, X - 92, Y + 46, -0.5 + Math.PI, { fill: 24, speed: 120 });
+  place(mabel, X + 210, Y - 120, 2.7, { fill: 40, speed: 260 });
+  place(dot, X - 200, Y - 130, 0.6, { fill: 70, speed: 220 });
   // The pop: everything in Gus's cheeks sprays out in a ring.
-  gus.cheeks = [9, 4, 3, 2, 1, 1, 0];
-  gus.fill = 120;
+  gus.cheeks = [4, 3, 3, 3, 2, 2, 0];
+  gus.fill = 128;
   w.pop(gus, pepper.id);
-  w.t += 0.22;
+  w.t += 0.4;
   w.drain();
-  fx.ring(900, 760, 150, '#FFF2D9');
-  fx.crumbs(900, 760, 30, ['#FF4D6D', '#FFF2D9', '#E3A24F', '#FFCB2E'], 280, 1.2);
-  fx.dust(900, 760, 12, 18);
+  fx.ring(X, Y, 150, '#FFF2D9');
+  fx.crumbs(X, Y, 26, ['#FF4D6D', '#FFF2D9', '#E3A24F', '#FFCB2E'], 300, 1.2);
+  fx.dust(X, Y, 5, 14);
   fx.stars(gus, 1.2);
+  fx.text(X, Y - 64, 'POP!', '#FF4D6D', 64, 1.3);
   fx.step(0.1);
-  settleAnims(r, w);
-  frame(r, w, 905, 760, 2.6);
+  settleAnims(r, w, { [pepper.id]: { sx: 1.1, sy: 0.9 } });
+  frame(r, w, X + 5, Y - 10, 2.05);
 }
 
 function win(r, fx, W, H) {
@@ -135,8 +150,8 @@ function win(r, fx, W, H) {
   clearAround(w, b.x, b.y, 160);
   mabel.heap = 1240;
   place(mabel, b.x + b.nx * 34 + 30, b.y + b.ny * 34, Math.PI * 0.75, { fill: 0 });
-  place(gus, b.x - 150, b.y + b.ny * 120, -0.3, { fill: 40, speed: 60 });
-  place(pepper, b.x + 170, b.y + b.ny * 150, Math.PI + 0.4, { fill: 0, dizzy: true });
+  place(gus, b.x - 190, b.y + b.ny * 110, -0.5, { fill: 40, speed: 60 });
+  place(pepper, b.x + 230, b.y + b.ny * 120, Math.PI + 0.4, { fill: 0, dizzy: true });
   settleAnims(r, w, { [mabel.id]: { happy: 1 } });
   fx.confetti(0, 0, W, 180);
   fx.step(1.1);
@@ -145,31 +160,63 @@ function win(r, fx, W, H) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   drawScreenParts(ctx, fx);
+  // The round's verdict, on a biscuit.
+  ctx.translate(W / 2, H - 150);
+  ctx.rotate(-0.03);
+  drawBiscuit(ctx, -270, -62, 540, 124, { scale: 1, radius: 26, bite: 'tr' });
+  piped(ctx, 'Most food wins!', 0, 0, 56);
   ctx.restore();
 }
 
 function multi(r, fx) {
-  const w = playedWorld(4, 'poster:multi', 62);
-  const gold = food(w, GOLDEN, 900, 830);
-  void gold;
-  clearAround(w, 900, 860, 70);
-  food(w, GOLDEN, 900, 860);
+  // Eight players at the campsite, all running for one golden seed.
+  const w = playedWorld(5, 'poster:multi', 62);
+  const g = w.findLanding(1210, 620, 12);
+  clearAround(w, g.x, g.y, 120);
+  food(w, GOLDEN, g.x, g.y);
   const spots = [
-    [700, 760, 0.35, 70],
-    [1100, 770, 2.7, 30],
-    [820, 990, -1.2, 10],
-    [1010, 980, -2.0, 50],
-    [600, 930, -0.2, 110],
-    [1220, 920, 3.3, 0],
-    [760, 880, 0.2, 90],
-    [1050, 870, 3.0, 20],
+    [-240, -60, 70],
+    [200, -100, 30],
+    [-80, 150, 10],
+    [150, 130, 50],
+    [-300, 100, 110],
+    [320, 40, 0],
+    [-130, -150, 90],
+    [70, -160, 20],
   ];
+  const names = new Map();
+  const tags = ['Ava', 'Kenji', 'Mo', 'Lucia', 'Sam', 'Priya', 'Theo', 'Zoe'];
   w.hams.forEach((h, i) => {
-    const [x, y, a, fill] = spots[i];
-    place(h, x, y, a, { fill, speed: 200, dash: i === 4 });
+    const [dx, dy, fill] = spots[i];
+    const p = w.findLanding(g.x + dx * 0.8, g.y + dy * 0.85, 26);
+    place(h, p.x, p.y, Math.atan2(g.y - p.y, g.x - p.x), { fill, speed: 220, dash: i === 4 || i === 1 });
+    names.set(h.id, tags[i]);
   });
+  fx.dust(g.x - 300, g.y + 100, 6, 14);
+  fx.step(0.1);
   settleAnims(r, w);
-  frame(r, w, 900, 820, 1.45);
+  const z = 1.6;
+  frame(r, w, g.x, g.y - 10, z, { names, noTags: false });
+  // The seed everyone is after shines.
+  const ctx = r.ctx;
+  const sx = r.vw / 2;
+  const sy = r.vh / 2 + 10 * z;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(sx, sy, 4, sx, sy, 90);
+  glow.addColorStop(0, 'rgba(255,214,90,0.85)');
+  glow.addColorStop(0.35, 'rgba(255,203,46,0.35)');
+  glow.addColorStop(1, 'rgba(255,203,46,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 90, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.translate(sx, sy);
+  ctx.scale(z * 1.5, z * 1.5);
+  drawFood(ctx, GOLDEN, 12);
+  ctx.restore();
 }
 
 function icon(r, W, H) {
@@ -180,8 +227,8 @@ function icon(r, W, H) {
   const g = buildGround(A, 1.4);
   ctx.drawImage(g, 760 * 1.4, 480 * 1.4, 380 * 1.4, 380 * 1.4, 0, 0, W, H);
   ctx.save();
-  ctx.translate(W / 2, H * 0.53);
-  const s = W / 70;
+  ctx.translate(W * 0.47, H * 0.56);
+  const s = W / 74;
   ctx.scale(s, s);
   ctx.fillStyle = 'rgba(59,34,24,0.28)';
   ctx.beginPath();
@@ -190,9 +237,9 @@ function icon(r, W, H) {
   drawHamster(ctx, { x: 0, y: 0, a: -Math.PI / 2, fill: 128, coat: 3, seat: 4, t: 0.4, gait: 0.6, speed: 0, wob: 0.3, bite: 0.4, sx: 1, sy: 1, sway: 0, blink: 0, dizzy: 0, happy: 0, away: false, crown: false });
   ctx.restore();
   ctx.save();
-  ctx.translate(W * 0.73, H * 0.27);
+  ctx.translate(W * 0.8, H * 0.2);
   ctx.rotate(0.3);
-  ctx.scale(s * 0.9, s * 0.9);
+  ctx.scale(s * 0.62, s * 0.62);
   drawFood(ctx, 5, 18);
   ctx.restore();
 }
@@ -289,7 +336,7 @@ function symbol(ctx, id) {
       piece(ctx, 0, 0, 0, 52, -0.5);
       break;
     case 'chipmunk-cheeks':
-      ham(ctx, 0, 6, 3.3, { fill: 132, coat: 1, seat: 0, wob: 0.2 });
+      ham(ctx, 0, 10, 2.25, { fill: 132, coat: 1, seat: 0, wob: 0.2 });
       break;
     case 'pop':
       burst(ctx, 82, 50, 10, '#FFF2D9');
@@ -305,13 +352,13 @@ function symbol(ctx, id) {
       ctx.lineCap = 'round';
       for (const y of [-26, 0, 26]) {
         ctx.beginPath();
-        ctx.moveTo(-92, y + 8);
-        ctx.lineTo(-48, y + 8);
+        ctx.moveTo(-86, y + 8);
+        ctx.lineTo(-50, y + 8);
         ctx.stroke();
       }
       ctx.save();
       ctx.rotate(Math.PI / 2);
-      ham(ctx, 0, -14, 3, { coat: 4, seat: 1, sx: 1.18, sy: 0.86 });
+      ham(ctx, 0, -6, 2.5, { coat: 4, seat: 1, sx: 1.12, sy: 0.88 });
       ctx.restore();
       break;
     case 'golden-seed':
