@@ -132,7 +132,7 @@ All arenas use the same foods, burrows and cat. Each adds one twist that shows i
 | 2 | Kitchen Counter | 1800×1200 | Wood planks, a steel sink, a cutting board; wet patches round the sink are slippery. "Slippery sink" | Easy+ |
 | 3 | Pantry Shelf | 2400×900 | Long and narrow; a row of jars splits it into two lanes with four gaps. "Narrow shelf" | Normal- |
 | 4 | Night Garden | 1800×1200 | A lawn at night: food shows in light (your glow, fireflies, a lantern); golden seeds always glow. "Lights out" | Normal |
-| 5 | Birthday Table | 1800×1200 | A strawberry cake in the middle; every 15 s it sheds a cake shower of big pieces; presents and a popper. "Cake showers" | Normal+ |
+| 5 | Birthday Table | 1800×1200 | A strawberry cake in the middle; every 15 s a cake shower flings big pieces off its top; presents and a popper. "Cake showers" | Normal+ |
 | 6 | Campsite | 1800×1200 | A stream across the clearing; two log bridges and a ford; a tent and a campfire. "Two bridges" | Hard- |
 | 7 | Lazy Susan | 1800×1200 | A dinner table whose round centre turns slowly, carrying food and hamsters. "Spinning table" | Hard |
 | 8 | The Cat's Table | 1800×1200 | A farmhouse table: the cat is awake all round, a paw every 12 s from 0:20 and every 5 s in the last 30. "The cat's awake" | Hard+ |
@@ -220,7 +220,7 @@ out drops onto the card with a chime.
 
 - **Levels**: level n → n+1 costs `120 + 40·(n−1)` XP. A typical round is worth 150-250, so level 2 comes in the first round,
   level 10 in a dozen or so, the end of the track (level 28) over many weeks.
-- **The Wardrobe** (lobby → Wardrobe; your hamster turns on the blanket beside the card, wearing what you pick):
+- **The Wardrobe** (lobby → Wardrobe; your hamster trots out onto the cloth and poses for a low close-up beside the card):
   - **Hats** (12): Party Hat (L2), Big Bow (4), Daisy (6), Bobble Beanie (8), Sprout (10), Acorn Cap (12), Chef Hat (15),
     Cowboy Hat (18), Propeller Cap (22), Strawberry (24), Top Hat (28), Golden Crown (all 24 Picnic stars).
   - **Pop effects** (how your pop bursts): Crumbs, Confetti (L3), Hearts (9), Starburst (14), Bubbles (20), Fireworks (25).
@@ -350,7 +350,8 @@ button. Text is at least 15 px, main buttons at least 48 px tall. Panels slide a
   streak) and Wardrobe ("New!" when something is waiting). Portrait phones: a band of seat heads and a one-line summary (the
   host taps it for a settings sheet), the mode biscuits stacked at the right edge, the level chip bottom left. Short landscape
   screens: the card goes two-column.
-- **Wardrobe.** Your hamster stands on the blanket beside the card, turning, wearing whatever you hover or pick; tabs for
+- **Wardrobe.** Your hamster trots clear of its burrow (food round the spot is cleared away), turns to the camera, which drops
+  low and close, and beams at each thing you try on; tabs for
   Hats, Coats, Pops and Trails; a grid of 3D portraits (locked ones greyed with their condition; a locked tap shakes); picking a
   pop or trail previews it on your hamster.
 - **Picnics.** Eight plates on a tablecloth, each with a picture of its table, its name and three stars (or a silver cloche

@@ -213,26 +213,64 @@ function clawTexture() {
   return clawTex;
 }
 
+/** Ginger tabby fur: velvet sheen, fine strands along the leg, and a little light through the edges. */
+function tabbyFur() {
+  const m = new THREE.MeshPhysicalMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.85, sheen: 1, sheenRoughness: 0.5, sheenColor: new THREE.Color('#ffd8a8') });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLocal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLocal = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        varying vec3 vLocal;
+        float th(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+        float tn(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(th(i), th(i + vec3(1,0,0)), f.x), mix(th(i + vec3(0,1,0)), th(i + vec3(1,1,0)), f.x), f.y),
+                     mix(mix(th(i + vec3(0,0,1)), th(i + vec3(1,0,1)), f.x), mix(th(i + vec3(0,1,1)), th(i + vec3(1,1,1)), f.x), f.y), f.z); }`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        float strand = tn(vec3(vLocal.x * 9.0, vLocal.y * 70.0, vLocal.z * 70.0));
+        diffuseColor.rgb *= 0.86 + strand * 0.26;`,
+      );
+  };
+  return m;
+}
+
 /** The cat's foreleg and paw: ginger tabby fur, toe beans under. Points along +x; the leg rises behind (−x, +y). */
 function makePaw() {
   const g = new THREE.Group();
-  const fur = new THREE.MeshStandardMaterial({ color: '#f0a050', roughness: 0.9, vertexColors: true });
-  const legGeo = new THREE.CapsuleGeometry(0.42, 5, 8, 20);
+  const fur = tabbyFur();
+  const legGeo = new THREE.CapsuleGeometry(0.42, 5, 10, 32, 64);
   legGeo.rotateZ(Math.PI / 2);
-  // Tabby stripes round the leg.
+  // Thicker toward the shoulder; tabby stripes that wrap round it, wavy and soft-edged; a cream underside.
   const p = legGeo.attributes.position;
   const col = new Float32Array(p.count * 3);
   const c = new THREE.Color();
+  const base = new THREE.Color('#f3a65e');
+  const dark = new THREE.Color('#b9581c');
+  const cream = new THREE.Color('#ffe6c8');
   for (let i = 0; i < p.count; i++) {
     const xx = p.getX(i);
+    const k = 1 + Math.max(0, (2.5 - xx) / 5) * 0.32;
+    p.setY(i, p.getY(i) * k);
+    p.setZ(i, p.getZ(i) * k);
     const yy = p.getY(i);
-    const stripe = Math.sin(xx * 3.4 + Math.sin(yy * 4) * 0.4) > 0.55;
-    c.set(stripe ? '#c86a28' : '#f5a85c');
-    if (yy < -0.2) c.lerp(new THREE.Color('#ffe2c0'), 0.5);
+    const zz = p.getZ(i);
+    const around = Math.atan2(zz, yy);
+    const wave = xx * 4.4 + Math.sin(around * 2 + xx) * 0.55 + Math.sin(around * 5) * 0.12;
+    const st = Math.sin(wave);
+    const stripe = st > 0.35 ? Math.min(1, (st - 0.35) / 0.25) : 0;
+    c.copy(base).lerp(dark, stripe * 0.85);
+    if (yy < 0) c.lerp(cream, Math.min(1, -yy / 0.45) * 0.7);
     col[i * 3] = c.r;
     col[i * 3 + 1] = c.g;
     col[i * 3 + 2] = c.b;
   }
+  legGeo.computeVertexNormals();
   legGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   const leg = new THREE.Mesh(legGeo, fur);
   leg.position.set(-2.6, 0.1, 0);
@@ -245,7 +283,9 @@ function makePaw() {
   pawGeo.scale(1.05, 0.55, 1);
   const pc = new Float32Array(pawGeo.attributes.position.count * 3);
   for (let i = 0; i < pawGeo.attributes.position.count; i++) {
-    c.set(pawGeo.attributes.position.getY(i) < -0.1 ? '#ffe2c0' : '#f5a85c');
+    const pp = pawGeo.attributes.position;
+    const top = pp.getY(i) > 0.05 && Math.sin(pp.getX(i) * 7 + Math.sin(pp.getZ(i) * 3) * 0.6) > 0.45;
+    c.set(pp.getY(i) < -0.1 ? '#ffe6c8' : top ? '#c46524' : '#f3a65e');
     pc[i * 3] = c.r;
     pc[i * 3 + 1] = c.g;
     pc[i * 3 + 2] = c.b;
