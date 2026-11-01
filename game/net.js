@@ -153,12 +153,14 @@ export function createOnline(room, helpers, o = {}) {
 
   // ------------------------------------------------------------------ host calls
 
+  // Each player's bite is its own claim (keyed by piece and player): a bite someone saw happen is theirs. On a tie, or when
+  // a bot got there a moment before on the host, the piece was big enough for both: they get one too.
   const eatClaim = host.claim('eat', {
-    args: { id: t.int(0, 99999), r: t.int(0, 99) },
-    key: (a) => String(a.id),
-    window: 120,
+    args: { id: t.int(0, 99999), r: t.int(0, 99), p: t.string(40) },
+    key: (a) => `${a.id}:${a.p}`,
+    window: 60,
     rate: 25,
-    validate: (c) => validEat(c.from.id, c.args),
+    validate: (c) => (c.args.p === c.from.id ? validEat(c.from.id, c.args) : 'not yours'),
     apply: (winner) => applyEat(winner.from.id, winner.args),
   });
 
@@ -189,25 +191,31 @@ export function createOnline(room, helpers, o = {}) {
   function validEat(pid, a) {
     const w = authWorld();
     if (!w || a.r !== match.round) return 'not now';
-    const f = w.food.get(a.id);
-    if (!f || w.t < f.land - 0.15) return 'gone';
     const h = w.byId.get(pid);
     if (!h || h.away || h.gone || h.dizzyT > 0) return 'cannot eat';
+    if (eaten.get(h.seat)?.includes(a.id)) return 'eaten';
+    const f = w.food.get(a.id) || shared(a.id);
+    if (!f || w.t < f.land - 0.15) return 'gone';
     const tol = reach(h.fill, FOODS[f.type].r) + 70;
     const p = latestPresence(pid);
     const near = (p && Math.hypot(p.x - f.x, p.y - f.y) <= tol) || w.nearRecently(h, f.x, f.y, tol);
     if (!near) return 'too far';
-    w.reserved.set(f.id, w.t + 0.35);
+    if (w.food.has(a.id)) w.reserved.set(a.id, w.t + 0.35);
     return true;
+  }
+  /** A piece eaten in the last moment, as one to share. */
+  function shared(id) {
+    const e = world.eatenAt.get(id);
+    return e && world.t - e.t <= 0.7 ? { id, type: e.type, x: e.x, y: e.y, land: -1 } : null;
   }
   function applyEat(pid, a) {
     const w = authWorld();
     if (!w) return;
-    const f = w.food.get(a.id);
     const h = w.byId.get(pid);
-    if (!f || !h) return;
+    const f = w.food.get(a.id) || shared(a.id);
+    if (!f || !h || eaten.get(h.seat)?.includes(a.id)) return;
     w.eat(h, f);
-    noteEaten(h.seat, f.id);
+    noteEaten(h.seat, a.id);
     dirty = true;
   }
   function validBank(pid, a) {
@@ -240,7 +248,12 @@ export function createOnline(room, helpers, o = {}) {
   function dashedNear(by, x, y, tol) {
     const w = world;
     let dashing;
-    if (by.remote && !by.bot) dashing = nowMs() - (dashSeen.get(by.id) ?? -1e9) < 700;
+    if (by.remote && !by.bot) {
+      const lp = latestPresence(by.id);
+      if (lp && lp.s & 1) dashSeen.set(by.id, nowMs());
+      dashing = nowMs() - (dashSeen.get(by.id) ?? -1e9) < 700;
+      if (dashing && lp && Math.hypot(lp.x - x, lp.y - y) <= tol) return true;
+    }
     else if (by.remote) dashing = !!by.remoteDash || nowMs() - (dashSeen.get(by.id) ?? -1e9) < 700;
     else dashing = by.dashT > 0 || w.t - (by.lastDashT ?? -9) < 0.7;
     if (!dashing) return false;
@@ -261,26 +274,39 @@ export function createOnline(room, helpers, o = {}) {
 
   // ------------------------------------------------------------------ bumps, by message
 
+  // A bump can arrive before the dash that made it (presence and messages travel apart): it waits a moment for it.
+  const bumpWait = [];
   room.on('message', (data, from) => {
     if (!data || typeof data !== 'object' || data.$ow) return;
-    if (data.t !== 'bump' || !world || match.phase !== 'round') return;
+    if (data.t !== 'bump' || !world || match.phase !== 'round' || !from) return;
     if (data.r !== match.round || !finite(data.dx) || !finite(data.dy)) return;
     const targetId = typeof data.to === 'string' ? data.to : myId();
     const target = world.byId.get(targetId);
     if (!target || target.remote) return; // only the page that moves a hamster takes its bumps
-    const byId = typeof data.by === 'string' ? data.by : from && from.id;
+    const byId = typeof data.by === 'string' ? data.by : from.id;
     const by = world.byId.get(byId);
     // A bot's bump comes from the host; a player's from that player.
     if (!by || (by.bot ? from.id !== room.host : from.id !== by.id)) return;
+    const b = { to: target.id, by: by.id, dx: data.dx, dy: data.dy, r: data.r, at: nowMs() };
+    if (!takeBump(b) && bumpWait.length < 16) bumpWait.push(b);
+  });
+
+  /** True when the bump is done with (taken, or refused); false while it waits for the dash. */
+  function takeBump(b) {
+    const target = world && world.byId.get(b.to);
+    const by = world && world.byId.get(b.by);
+    if (!target || !by || target.remote || b.r !== match.round || match.phase !== 'round') return true;
     if (!dashedNear(by, target.x, target.y, 150)) {
+      if (nowMs() - b.at < 400) return false;
       stats.bumpsRefused++;
-      return;
+      return true;
     }
-    if (world.hit(target, 'bump', by.id, data.dx, data.dy)) {
+    if (world.hit(target, 'bump', by.id, b.dx, b.dy)) {
       stats.bumpsTaken++;
       dirty = true;
     }
-  });
+    return true;
+  }
 
   // ------------------------------------------------------------------ the round's world
 
@@ -309,7 +335,7 @@ export function createOnline(room, helpers, o = {}) {
         world.food.delete(f.id);
         world.emit({ k: 'eat', id: h.id, type: f.type, x: f.x, y: f.y, fill: displayFill(), food: f.id, predicted: true });
         const r = match.round;
-        Promise.resolve(eatClaim({ id: f.id, r }))
+        Promise.resolve(eatClaim({ id: f.id, r, p: myId() }))
           .then((res) => {
             const p = pending.get(f.id);
             if (!p) return;
@@ -356,6 +382,7 @@ export function createOnline(room, helpers, o = {}) {
       brains: (h, w) => (h.bot ? createBrain(h, w, { skill: h.skill, kind: h.kind, seed: `${data.s}:${h.id}` }) : null),
     });
     worldKey = match.roundId;
+    bumpWait.length = 0;
     wasHost = isHost;
     pending.clear();
     hostCheeks = emptyCheeks();
@@ -691,9 +718,11 @@ export function createOnline(room, helpers, o = {}) {
       room.setPresence({ k: 'w', x: 0, y: 0, c: o.coat ? o.coat() : 0 });
       return;
     }
-    const bits = (me.dashT > 0 ? 1 : 0) | (me.stunT > 0 ? 2 : 0) | (me.dizzyT > 0 ? 4 : 0) | (me.home ? 8 : 0);
+    // The dash bit stays up a moment after the dash: a dash that ends in a bump within a frame still goes out.
+    const dashed = me.dashT > 0 || w.t - (me.lastDashT ?? -9) < 0.35;
+    const bits = (dashed ? 1 : 0) | (me.stunT > 0 ? 2 : 0) | (me.dizzyT > 0 ? 4 : 0) | (me.home ? 8 : 0);
     const pres = { k: 'p', r: match.round, x: Math.round(me.x), y: Math.round(me.y), a: Math.round(me.a * 100) / 100, f: Math.round(me.fill), c: o.coat ? o.coat() : 0, s: bits };
-    if (w.authority) pres.b = w.hams.filter((h) => h.bot).map((h) => [Math.round(h.x), Math.round(h.y), Math.round(h.fill), (h.dashT > 0 ? 1 : 0) | (h.dizzyT > 0 ? 4 : 0)]);
+    if (w.authority) pres.b = w.hams.filter((h) => h.bot).map((h) => [Math.round(h.x), Math.round(h.y), Math.round(h.fill), (h.dashT > 0 || w.t - (h.lastDashT ?? -9) < 0.35 ? 1 : 0) | (h.dizzyT > 0 ? 4 : 0)]);
     room.setPresence(pres);
   }
 
@@ -767,6 +796,11 @@ export function createOnline(room, helpers, o = {}) {
       }
       if (match.phase === 'round' && !world.over) {
         applyRemotes();
+        if (bumpWait.length) {
+          const keep = bumpWait.filter((b) => !takeBump(b));
+          bumpWait.length = 0;
+          bumpWait.push(...keep);
+        }
         const target = Math.min(world.duration, match.elapsed / 1000);
         if (target - world.t > 3) {
           // Far behind (a hidden tab): jump, the schedule catches up on its own.
@@ -787,6 +821,7 @@ export function createOnline(room, helpers, o = {}) {
               continue;
             }
             if (world.authority) {
+              if (e.k === 'eat') dirty = true; // pieces gone: others must see it soon, or they bite it too
               record(e);
               if (e.k === 'pop' && e.by && e.by === myId()) mine.popsByBump++;
             }

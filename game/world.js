@@ -63,6 +63,7 @@ export function createWorld(o) {
     rng,
     flies: [],
     reserved: new Map(), // food id -> world time it's kept until (a claim in flight, on the host)
+    eatenAt: new Map(), // food id -> { t, type, x, y }: lately eaten (the host shares a tie)
     swept: new Set(), // `${sweep}:${id}` already hit
     sweptFood: new Set(),
   };
@@ -183,6 +184,8 @@ export function createWorld(o) {
     const after = h.fill + size;
     const chance = popChance(after);
     w.removeFood(f.id);
+    if (!w.eatenAt.has(f.id)) w.eatenAt.set(f.id, { t: w.t, type: f.type, x: f.x, y: f.y });
+    if (w.eatenAt.size > 200) for (const [id, e] of w.eatenAt) if (w.t - e.t > 2) w.eatenAt.delete(id);
     h.cheeks[f.type]++;
     h.fill = after;
     h.lastBite = w.t;
@@ -507,7 +510,7 @@ export function createWorld(o) {
       const dy = g.y - h.y;
       if (dx * dx + dy * dy > DASH.hit * DASH.hit) continue;
       h.dashHit.add(g.id);
-      if (w.inPorch(g) || g.immuneT > 0 || g.dizzyT > 0) continue;
+      if (w.inPorch(g) || g.immuneT > 0 || g.dizzyT > 0 || (g.remote && g.remoteDizzy)) continue;
       // Recoil, and the dash ends.
       const d = Math.hypot(dx, dy) || 1;
       h.dashT = 0;
@@ -515,7 +518,11 @@ export function createWorld(o) {
       h.kby = (-dy / d) * ((DASH.recoil * 2) / 0.2);
       h.kbT = 0.2;
       h.kbDur = 0.2;
-      if (g.remote) w.emit({ k: 'bumpOut', id: g.id, by: h.id, dx: dx / d, dy: dy / d, x: h.x, y: h.y });
+      if (g.remote) {
+        // Their page decides; here it shows as taken (and isn't sent twice).
+        g.immuneT = DASH.immune;
+        w.emit({ k: 'bumpOut', id: g.id, by: h.id, dx: dx / d, dy: dy / d, x: h.x, y: h.y });
+      }
       else w.hit(g, 'bump', h.id, dx, dy);
       break;
     }
@@ -533,8 +540,16 @@ export function createWorld(o) {
         w.lastSweep = s.n;
         if (w.hit(h, 'paw', null, s.dx, s.dy)) w.emit({ k: 'swat', id: h.id, n: s.n });
       }
-      // Food in the band is flung along the swat (by whoever decides the food).
-      if (!w.authority) continue;
+      // Food in the band is flung along the swat by whoever decides the food; elsewhere it leaves the table at once (the
+      // record brings it back where it lands), so nobody bites a piece the paw already took.
+      if (!w.authority) {
+        for (const f of [...w.food.values()]) {
+          if (w.t < f.land || w.sweptFood.has(`${s.n}:${f.id}`) || !pawHits(s, f.x, f.y, t0, t1)) continue;
+          w.sweptFood.add(`${s.n}:${f.id}`);
+          w.removeFood(f.id);
+        }
+        continue;
+      }
       for (const f of [...w.food.values()]) {
         if (w.t < f.land || w.sweptFood.has(`${s.n}:${f.id}`)) continue;
         if (!pawHits(s, f.x, f.y, t0, t1)) continue;
