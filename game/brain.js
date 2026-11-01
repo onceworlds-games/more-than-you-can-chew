@@ -21,9 +21,9 @@ export function brainParams(skill, kind) {
   const p = {
     plan: lerp(0.62, 0.22, s),
     err: lerp(0.5, 0.05, s),
-    homeLo: lerp(45, 84, s),
-    homeHi: lerp(80, 99, s),
-    avoid: lerp(0.35, 0.96, s),
+    homeLo: lerp(72, 58, s),
+    homeHi: lerp(104, 80, s),
+    avoid: lerp(0.2, 1, s),
     aggro: lerp(0.05, 0.36, s),
     dodge: lerp(0.15, 0.92, s),
     goldenFill: lerp(40, 85, s),
@@ -31,7 +31,7 @@ export function brainParams(skill, kind) {
     cluster: s,
     anticipate: s > 0.55,
     topK: Math.max(1, Math.round(1 + (1 - s) * 3)),
-    overstuff: lerp(0.3, 0.04, s), // chance to take a bite that overstuffs anyway
+    overstuff: lerp(0.35, 0.02, s), // chance to take a bite that overstuffs anyway
     weights: [1, 1, 1, 1, 1, 1, 1],
     dyn: 1,
     golden: 1,
@@ -260,6 +260,7 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
     if (avoiding) {
       for (const f of w.food.values()) {
         if (w.t < f.land - 0.2 || f.id === keep) continue;
+        if (h.fill + FOODS[f.type].size <= CAP) continue; // harmless: it still fits
         const d2 = (f.x - h.x) ** 2 + (f.y - h.y) ** 2;
         if (d2 < 150 * 150) near.push(f);
       }
@@ -339,7 +340,7 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
         wanderUntil = w.t + 1;
       }
       const via = waypoint(w.arena, me.x, me.y, goal.x, goal.y);
-      const avoiding = avoidTrip && me.fill >= 62;
+      const avoiding = avoidTrip && !greedyTrip && me.fill > CAP - 32;
       const out = steer(w, via.x, via.y, avoiding, goal.kind === 'food' ? goal.food : -1);
       return { mx: out.mx, my: out.my, dash: false };
     },

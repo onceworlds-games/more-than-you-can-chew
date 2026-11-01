@@ -21,13 +21,25 @@ const angDiff = (a, b) => {
  * @param {object} o
  *   arena, seed, round (1-based), duration (s),
  *   seats: [{ id, name, bot, coat, kind?, skill? }] in burrow order,
- *   brains: optional (seat, world) => brain with think(world, h, dt) -> input, for bots
+ *   brains: optional (seat, world) => brain with think(world, h, dt) -> input, for bots,
+ *   authority: false on a page that isn't the host (it predicts: touching food, reaching home and being hit go to `hooks`
+ *     { touch(h, f), home(h), hit(h, kind, by, dx, dy) } and the host decides),
+ *   practice: true for the lobby's practice blanket (no clock, no cat, food comes back)
  */
 export function createWorld(o) {
   const arena = o.arena;
-  const duration = o.duration ?? ROUND.seconds;
+  const practice = !!o.practice;
+  const duration = practice ? Infinity : o.duration ?? ROUND.seconds;
+  const hooks = o.hooks || {};
   const burrows = burrowsFor(arena, o.seats.length);
-  const sched = makeSchedule({ seed: o.seed, arena, burrows, duration });
+  const sched = makeSchedule({ seed: o.seed, arena, burrows, duration: practice ? 24 : duration });
+  if (practice) {
+    sched.sweeps.length = 0;
+    sched.goldens.length = 0;
+    sched.items = sched.items.filter((it) => it.src === 'open' || it.src === 'door' || it.src === 'toss');
+    sched.items.forEach((it, i) => (it.i = i));
+    sched.count = sched.items.length;
+  }
   const rng = createRng(`world:${o.seed}:${o.round ?? 1}`);
 
   const w = {
@@ -35,6 +47,8 @@ export function createWorld(o) {
     seed: o.seed,
     round: o.round ?? 1,
     duration,
+    practice,
+    authority: o.authority !== false, // can change when the host changes
     burrows,
     sched,
     t: 0,
@@ -48,6 +62,7 @@ export function createWorld(o) {
     events: [],
     rng,
     flies: [],
+    reserved: new Map(), // food id -> world time it's kept until (a claim in flight, on the host)
     swept: new Set(), // `${sweep}:${id}` already hit
     sweptFood: new Set(),
   };
@@ -81,6 +96,7 @@ export function createWorld(o) {
       heap: 0,
       remote: false,
       away: false,
+      gone: false,
       input: { mx: 0, my: 0, dash: false },
       lastDash: false,
       dashT: 0,
@@ -192,10 +208,8 @@ export function createWorld(o) {
     h.cheeks = emptyCheeks();
     h.fill = 0;
     h.stats.pops++;
-    if (!h.remote) {
-      h.dizzyT = POP.dizzy;
-      h.dashT = 0;
-    }
+    h.dizzyT = POP.dizzy;
+    h.dashT = 0;
     if (by) {
       const b = w.byId.get(by);
       if (b) b.stats.bullied++;
@@ -245,6 +259,13 @@ export function createWorld(o) {
     const nx = dx / d;
     const ny = dy / d;
     if (!h.remote) w.knock(h, kind, nx, ny);
+    if (!w.authority) {
+      // The host decides what spills: tell it, and show the knock now.
+      h.immuneT = DASH.immune;
+      w.emit({ k: 'hit', id: h.id, by, kind, x: h.x, y: h.y, dx: nx, dy: ny, fill: h.fill, predicted: true });
+      if (hooks.hit) hooks.hit(h, kind, by, nx, ny);
+      return true;
+    }
     h.immuneT = DASH.immune;
     if (kind === 'paw') h.stats.swatted++;
     w.emit({ k: 'hit', id: h.id, by, kind, x: h.x, y: h.y, dx: nx, dy: ny, fill: h.fill });
@@ -315,7 +336,12 @@ export function createWorld(o) {
 
     // Bots think; everyone this world moves, moves.
     for (const h of w.hams) {
-      if (h.remote) continue;
+      if (h.remote) {
+        // Timers the host keeps for players it doesn't move (it decided their pops and hits).
+        h.immuneT = Math.max(0, h.immuneT - dt);
+        h.dizzyT = Math.max(0, h.dizzyT - dt);
+        continue;
+      }
       if (h.brain) h.input = h.brain.think(w, h, dt) || h.input;
       move(h, dt);
       if (keepTrail) {
@@ -328,12 +354,34 @@ export function createWorld(o) {
       if (h.remote) continue;
       h.home = w.inPorch(h);
       if (h.dizzyT <= 0 && !h.away) eatAround(h);
-      if (h.home && h.fill > 0 && h.dizzyT <= 0) w.bank(h);
+      if (h.home && h.fill > 0 && h.dizzyT <= 0) {
+        if (w.authority) w.bank(h);
+        else if (hooks.home) hooks.home(h);
+      }
       if (h.dashT > 0) bumps(h);
     }
     paw(t0, w.t);
+    if (practice) refill();
     if (w.t >= w.duration) w.finish();
   };
+
+  // The practice blanket: eaten pieces come back a while later, dropping in like a toss.
+  let refillT = 0;
+  function refill() {
+    if (w.t < refillT) return;
+    refillT = w.t + 1.5;
+    let landed = 0;
+    for (const f of w.food.values()) if (f.id < DYN) landed++;
+    if (landed >= sched.count * 0.7) return;
+    let n = 0;
+    for (let k = 0; k < sched.count && n < 6; k++) {
+      const it = sched.items[(Math.floor(w.t * 7) + k * 37) % sched.count];
+      if (!w.gone[it.i] || w.food.has(it.i)) continue;
+      w.gone[it.i] = 0;
+      w.addFood({ id: it.i, type: it.type, x: it.x, y: it.y, bx: it.x, by: it.y, tb: w.t + 1, land: w.t + 1, src: 'toss', fx: null, fy: null });
+      n++;
+    }
+  }
 
   function move(h, dt) {
     h.dashCd = Math.max(0, h.dashCd - dt);
@@ -360,6 +408,7 @@ export function createWorld(o) {
       h.dashDx = dx;
       h.dashDy = dy;
       h.dashHit.clear();
+      h.lastDashT = w.t;
       w.emit({ k: 'dash', id: h.id, x: h.x, y: h.y, dx, dy });
     }
     const slip = inSlip(arena, h.x, h.y);
@@ -435,10 +484,16 @@ export function createWorld(o) {
   function eatAround(h) {
     for (const f of w.food.values()) {
       if (w.t < f.land) continue;
+      // A player's bite on its way to the host keeps the piece for them.
+      if (w.reserved.size && (w.reserved.get(f.id) ?? -1) > w.t) continue;
       const r = reach(h.fill, FOODS[f.type].r);
       const dx = f.x - h.x;
       const dy = f.y - h.y;
       if (dx * dx + dy * dy > r * r) continue;
+      if (!w.authority) {
+        if (hooks.touch) hooks.touch(h, f);
+        continue;
+      }
       w.eat(h, f);
       if (h.dizzyT > 0 || h.fill === 0) break; // popped
     }
@@ -470,14 +525,16 @@ export function createWorld(o) {
     for (const s of sched.sweeps) {
       if (t1 < s.swat || t0 > s.end) continue;
       for (const h of w.hams) {
-        if (h.remote || h.away) continue;
+        if (h.remote || h.away || h.gone) continue;
         const key = `${s.n}:${h.id}`;
         if (w.swept.has(key)) continue;
         if (!pawHits(s, h.x, h.y, t0, t1)) continue;
         w.swept.add(key);
+        w.lastSweep = s.n;
         if (w.hit(h, 'paw', null, s.dx, s.dy)) w.emit({ k: 'swat', id: h.id, n: s.n });
       }
-      // Food in the band is flung along the swat.
+      // Food in the band is flung along the swat (by whoever decides the food).
+      if (!w.authority) continue;
       for (const f of [...w.food.values()]) {
         if (w.t < f.land || w.sweptFood.has(`${s.n}:${f.id}`)) continue;
         if (!pawHits(s, f.x, f.y, t0, t1)) continue;

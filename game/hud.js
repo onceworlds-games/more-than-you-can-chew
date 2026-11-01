@@ -218,7 +218,7 @@ export function createHud(renderer) {
     }
   }
 
-  function drawHint(h, vw, vh) {
+  function drawHint(h, vw, vh, taken) {
     const p = renderer.toScreen(h.x, h.y);
     const u = h.age / h.life;
     const size = 20;
@@ -227,10 +227,18 @@ export function createHud(renderer) {
     const tw = ctx.measureText(h.text).width;
     const W = tw + 34;
     const H = 44;
-    let x = clamp(p.x - W / 2, 10, vw - W - 10);
-    let y = p.y - 112 * Math.max(0.8, renderer.cam.z);
-    if (y < 110) y = p.y + 54;
-    y = clamp(y, 10, vh - H - 10);
+    const x = clamp(p.x - W / 2, 10, vw - W - 10);
+    // Above the hamster, else below it, else beside: wherever it misses the HUD and the platform's controls.
+    const above = p.y - 70 * Math.max(0.8, renderer.cam.z) - H;
+    const below = p.y + 40 * Math.max(0.8, renderer.cam.z);
+    const tries = [above, below, p.y - H / 2].map((t) => clamp(t, 10, vh - H - 10));
+    let y = tries[0];
+    for (const t of tries) {
+      if (!hits({ x, y: t, w: W, h: H }, taken)) {
+        y = t;
+        break;
+      }
+    }
     const appear = clamp(h.age / 0.2, 0, 1);
     const gone = u > 0.85 ? (u - 0.85) / 0.15 : 0;
     ctx.globalAlpha = 1 - gone;
@@ -252,11 +260,11 @@ export function createHud(renderer) {
       const drop = u < 0.25 ? -1 + easeOutBack(u / 0.25) : u > 0.85 ? -((u - 0.85) / 0.15) * 1.2 : 0;
       ctx.translate(0, drop * vh * 0.5);
       const W = Math.min(vw - 40, 340);
-      const H = 92;
+      const H = big.sub ? 120 : 92;
       ctx.rotate(-0.04);
       drawBiscuit(ctx, -W / 2, -H / 2, W, H, { scale: renderer.dpr, radius: 22, bite: 'tr' });
-      piped(ctx, big.text, 0, 0, 46);
-      if (big.sub) piped(ctx, big.sub, 0, 70, 20, { font: 'Bricolage', outline: 0.3 });
+      piped(ctx, big.text, 0, big.sub ? -14 : 0, 46);
+      if (big.sub) piped(ctx, big.sub, 0, 34, 24, { outline: 0.22 });
     } else {
       const s = u < 0.18 ? easeOutBack(u / 0.18) : 1 + (u - 0.18) * 0.15;
       ctx.globalAlpha = u > 0.8 ? 1 - (u - 0.8) / 0.2 : 1;
@@ -301,8 +309,8 @@ export function createHud(renderer) {
       if (h.arrows) drawArrows(h.arrows, vw, vh, reserved);
       const taken = [...reserved];
       if (h.timer) taken.push(drawTimer(h.timer, reserved, vw));
-      if (h.place) drawPlace(h.place, taken, vw);
-      if (h.hint) drawHint(h.hint, vw, vh);
+      if (h.place) taken.push(drawPlace(h.place, taken, vw));
+      if (h.hint) drawHint(h.hint, vw, vh, taken);
       if (h.tag) drawTag(h.tag, vw, vh, reserved);
       if (h.big) drawIntro(h.big, vw, vh);
       ctx.restore();

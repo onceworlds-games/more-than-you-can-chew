@@ -1,0 +1,31 @@
+{
+  "slug": "more-than-you-can-chew",
+  "name": "More Than You Can Chew",
+  "description": "Stuff your cheeks, bank it in your burrow, don't pop. Most food wins.",
+  "dir": "game",
+  "productionBranch": "main",
+  "genre": "Party",
+  "icon": "store/icon.png",
+  "thumbnails": ["store/thumb-1.png", "store/thumb-2.png", "store/thumb-3.png", "store/thumb-4.png"],
+  "controls": [
+    { "keys": ["W", "A", "S", "D", "Arrows"], "action": "Run" },
+    { "keys": ["Mouse"], "action": "Run toward the pointer" },
+    { "keys": ["Space", "Click"], "action": "Bump (a short dash)" },
+    { "keys": ["Stick"], "action": "Run (touch)" },
+    { "keys": ["Bump"], "action": "Bump (touch)" },
+    { "keys": ["Space", "Enter"], "action": "Play" },
+    { "keys": ["Esc"], "action": "Pause a Picnic or the Daily" }
+  ],
+  "badges": [
+    { "id": "first-bite", "name": "First Bite", "description": "Bank your first food.", "icon": "store/badge-first-bite.png" },
+    { "id": "chipmunk-cheeks", "name": "Chipmunk Cheeks", "description": "Bank a cheekful of 120 or more.", "icon": "store/badge-chipmunk-cheeks.png" },
+    { "id": "pop", "name": "POP!", "description": "Burst your cheeks.", "icon": "store/badge-pop.png" },
+    { "id": "bully", "name": "Bully", "description": "Pop a rival with a bump.", "icon": "store/badge-bully.png" },
+    { "id": "golden-seed", "name": "Golden Seed", "description": "Bank a golden sunflower seed.", "icon": "store/badge-golden-seed.png" },
+    { "id": "hoarder", "name": "Hoarder", "description": "Bank 1,000 in one round.", "icon": "store/badge-hoarder.png" },
+    { "id": "clean-plate", "name": "Clean Plate", "description": "Win without popping once.", "icon": "store/badge-clean-plate.png" },
+    { "id": "buzzer-beater", "name": "Buzzer Beater", "description": "Bank in the last 3 seconds.", "icon": "store/badge-buzzer-beater.png" },
+    { "id": "daily-crumbs", "name": "Daily Crumbs", "description": "Finish a Daily.", "icon": "store/badge-daily-crumbs.png" },
+    { "id": "picnic-season", "name": "Picnic Season", "description": "Win all eight Picnics.", "icon": "store/badge-picnic-season.png" }
+  ]
+}
