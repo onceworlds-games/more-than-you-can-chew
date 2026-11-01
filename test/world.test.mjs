@@ -19,6 +19,11 @@ function put(w, type, x, y) {
   return w.addFood({ id: w.dynId++, type, x, y, bx: x, by: y, tb: 0, land: -1, src: 'open', fx: null, fy: null });
 }
 
+/** Nothing more lands from the schedule (for tests that jump the clock). */
+function quiet(w) {
+  w.next = w.sched.count;
+}
+
 /** Out in the field, away from every burrow and piece. */
 function clearSpot(w, h, x = 900, y = 600) {
   for (const f of [...w.food.values()]) if (Math.hypot(f.x - x, f.y - y) < 260) w.food.delete(f.id);
@@ -120,6 +125,7 @@ test('bumps: a dash knocks food out of a rival, pops one past full; burrows and 
   const a = w.byId.get('a');
   const b = w.byId.get('b');
   w.t = 10;
+  quiet(w);
   clearSpot(w, b, 900, 600);
   b.cheeks[3] = 6; // 60
   b.fill = 60;
@@ -361,6 +367,7 @@ test('bubble gum: bumps and the paw bounce off; the dasher flies back', () => {
   const a = w.byId.get('a');
   const b = w.byId.get('b');
   w.t = 10;
+  quiet(w);
   clearSpot(w, b, 900, 600);
   b.cheeks[5] = 4;
   b.fill = 120;

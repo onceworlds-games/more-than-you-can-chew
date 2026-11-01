@@ -2,7 +2,7 @@
 // your head (gobble chains, Stuffed and Bursting), specials' timers, edge arrows, hints, floating numbers, big words and
 // confetti. Stickers: cocoa ink, a cream rim, bright fills. Kept clear of the platform's UI (ow.ui.reserved).
 
-import { SEATS, CAP, TIERS, SPECIAL } from './sim/config.js';
+import { SEATS, TIERS, SPECIAL } from './sim/config.js';
 import { drawEmblem } from './render/arena.js';
 
 const INK = '#3B2218';
@@ -269,13 +269,11 @@ export function createHud(canvas, world) {
     let key = '';
     let text = '';
     let color = '#FFCB2E';
-    let sub = '';
     const tier = me.fill > TIERS[0].at ? TIERS[0] : me.fill > TIERS[1].at ? TIERS[1] : null;
     if (tier) {
       key = tier.key;
       text = `${tier.name} ×${tier.mult}`;
       color = tier.key === 'bursting' ? '#FF4D6D' : '#FF8A2A';
-      sub = 'Bank it!';
     }
     if (me.chain >= 2 && me.chainFresh) {
       key = `chain${me.chain}${tier ? tier.key : ''}`;
@@ -304,11 +302,6 @@ export function createHud(canvas, world) {
     sticker(-W / 2, -H / 2, W, H, 14, color);
     label(text, 0, 1, size, { outline: 0.24 });
     ctx.restore();
-    if (sub && me.fill > CAP) {
-      ctx.globalAlpha = 0.6 + Math.sin(time * 8) * 0.4;
-      label(sub, clamp(me.x, 50, vw - 50), y - 12, 15, { font: 'bold', weight: 800, outline: 0.3, color: '#FFFFFF', shadow: false });
-      ctx.globalAlpha = 1;
-    }
   }
 
   /** Little round timers for the specials (chili, gum, a sneeze coming). */

@@ -22,7 +22,7 @@ test('every piece lands on the field, clear of burrows and obstacles, inside the
     for (const seed of [1, 2, 3]) {
       const burrows = burrowsFor(a, 8);
       const s = makeSchedule({ seed, arena: a, burrows });
-      assert.ok(s.count > 600 && s.count < 1000, `${a.name}: ${s.count} pieces`);
+      assert.ok(s.count > 600 && s.count < 1250, `${a.name}: ${s.count} pieces`);
       for (const it of s.items) {
         assert.ok(Number.isFinite(it.x) && Number.isFinite(it.y) && Number.isFinite(it.land));
         assert.ok(it.land <= ROUND.seconds, 'lands before the buzzer');
@@ -75,7 +75,7 @@ test('balance: heaps near 1,100, winners near 1,700, nobody runs away with it, f
   assert.ok(m > 800 && m < 1500, `median heap ${m}`);
   assert.ok(wm > 1200 && wm < 2300, `median winner ${wm}`);
   assert.ok(median(gaps) < 1.35, `winners win, but close (first/second ${median(gaps).toFixed(2)})`);
-  assert.ok(low >= 8, `there is always food to find (${low})`);
+  assert.ok(low >= 12, `there is always food to find (${low})`);
 });
 
 test('bots: better bots bank more, the best can be beaten, the worst still play', () => {
@@ -99,11 +99,17 @@ test('bots: better bots bank more, the best can be beaten, the worst still play'
 });
 
 test('personalities show: the glutton pops most, the banker least', () => {
-  const pops = {};
+  // Per bot: two of the eight are plain.
+  const sum = {};
+  const n = {};
   for (let seed = 1; seed <= 5; seed++) {
     const r = playRound({ arena: 0, seed });
-    for (const h of r.w.hams) pops[h.kind] = (pops[h.kind] ?? 0) + h.stats.pops;
+    for (const h of r.w.hams) {
+      sum[h.kind] = (sum[h.kind] ?? 0) + h.stats.pops;
+      n[h.kind] = (n[h.kind] ?? 0) + 1;
+    }
   }
+  const pops = Object.fromEntries(Object.keys(sum).map((k) => [k, sum[k] / n[k]]));
   const most = Math.max(...Object.values(pops));
   const least = Math.min(...Object.values(pops));
   assert.equal(pops.glutton, most, JSON.stringify(pops));

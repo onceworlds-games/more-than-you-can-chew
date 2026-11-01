@@ -103,6 +103,33 @@ export function makeSchedule({ seed, arena, burrows, duration = ROUND.seconds, s
     t += late ? S.lateEvery + rng.range(-S.lateJitter, S.lateJitter) : S.tossEvery + rng.range(-S.tossJitter, S.tossJitter);
   }
 
+  // Pours: a hand pours a line of seeds across the cloth, one after another (its own stream, so the rest stays put).
+  const prng = createRng(`pour:${seed}:${arena.id}`);
+  for (let at = S.pourFrom + prng.range(0, 3); at < duration - 6; at += S.pourEvery + prng.range(-S.pourJitter, S.pourJitter)) {
+    const c = middle(prng, arena, 0.8);
+    const ang = prng.next() * Math.PI * 2;
+    const len = prng.range(260, 420);
+    const bend = prng.range(-0.35, 0.35) * len;
+    const n = Math.round(len / S.pourGap);
+    const dx = Math.cos(ang);
+    const dy = Math.sin(ang);
+    const land = at + S.tossShadow;
+    const x0 = c.x - (dx * len) / 2;
+    const y0 = c.y - (dy * len) / 2;
+    const toss = { i: tosses.length, at, land, x: Math.round(x0), y: Math.round(y0), r: 40, n: 0, pour: { x1: Math.round(x0 + dx * len), y1: Math.round(y0 + dy * len), dur: n * S.pourRate } };
+    for (let k = 0; k < n; k++) {
+      const u = k / Math.max(1, n - 1);
+      const side = Math.sin(u * Math.PI) * bend;
+      const x = x0 + dx * len * u - dy * side + prng.range(-5, 5);
+      const y = y0 + dy * len * u + dx * side + prng.range(-5, 5);
+      const type = k === n - 1 ? prng.pick([2, 4, 5]) : k % 5 === 4 ? 1 : 0;
+      if (!foodSpotOk(arena, x, y, FOODS[type].r, burrows)) continue;
+      add(type, x, y, land + k * S.pourRate, 'toss', toss.i);
+      toss.n++;
+    }
+    if (toss.n >= 4) tosses.push(toss);
+  }
+
   // Golden seeds under a shaft of light.
   for (const at of S.golden) {
     const land = at + rng.range(-S.goldenJitter, S.goldenJitter);

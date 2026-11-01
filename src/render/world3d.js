@@ -848,11 +848,21 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
       // Tosses: the giant hand's shadow slides in, the piece is thrown, the hand withdraws.
       let hi = 0;
       for (const ts of w.sched.tosses) {
-        if (t < ts.at - 0.4 || t > ts.land + 0.5) continue;
-        const ang = unit('hand', w.seed, ts.i) * Math.PI * 2;
+        // A pour's hand moves along its line while the seeds fall.
+        const done = ts.land + (ts.pour ? ts.pour.dur : 0);
+        if (t < ts.at - 0.4 || t > done + 0.5) continue;
+        const ang = ts.pour ? Math.atan2(ts.pour.y1 - ts.y, ts.pour.x1 - ts.x) + Math.PI / 2 : unit('hand', w.seed, ts.i) * Math.PI * 2;
         let u;
         if (t < ts.land) u = clamp((t - (ts.at - 0.4)) / (ts.land - ts.at + 0.4), 0, 1);
-        else u = 1 - clamp((t - ts.land) / 0.5, 0, 1);
+        else if (t <= done) u = 1;
+        else u = 1 - clamp((t - done) / 0.5, 0, 1);
+        let hx = ts.x;
+        let hy = ts.y;
+        if (ts.pour) {
+          const k = clamp((t - ts.land + 0.5) / (ts.pour.dur + 0.5), 0, 1);
+          hx += (ts.pour.x1 - ts.x) * k;
+          hy += (ts.pour.y1 - ts.y) * k;
+        }
         const e = 1 - (1 - u) * (1 - u);
         const dist = 1.6 + (1 - e) * 7;
         if (!hands[hi]) {
@@ -864,7 +874,7 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
         }
         const m = hands[hi++];
         m.visible = true;
-        m.position.set(ts.x * U - Math.cos(ang) * dist, 0.006, ts.y * U - Math.sin(ang) * dist);
+        m.position.set(hx * U - Math.cos(ang) * dist, 0.006, hy * U - Math.sin(ang) * dist);
         m.rotation.z = -ang;
         m.scale.set(3.4, 3.4, 1);
         m.material.opacity = 0.32 * Math.min(1, u * 2);

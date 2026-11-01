@@ -877,7 +877,14 @@ export async function boot() {
       if (ts.at > t0 && ts.at <= t1 && onScreen(ts.x, ts.y, 200)) audio.play('toss');
       if (ts.land > t0 && ts.land <= t1 && onScreen(ts.x, ts.y, 100)) {
         audio.play('land');
-        fx.dust(ts.x * U, ts.y * U, 7, 0.3);
+        fx.dust(ts.x * U, ts.y * U, ts.pour ? 3 : 7, 0.3);
+      }
+      // A pour patters down along its line.
+      if (ts.pour && t1 > ts.land && t0 < ts.land + ts.pour.dur) {
+        const k = Math.min(1, (t1 - ts.land) / ts.pour.dur);
+        const x = ts.x + (ts.pour.x1 - ts.x) * k;
+        const y = ts.y + (ts.pour.y1 - ts.y) * k;
+        if (onScreen(x, y, 60)) fx.dust(x * U, y * U, 1, 0.16);
       }
     }
     for (const g of w.sched.goldens) {

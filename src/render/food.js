@@ -51,9 +51,9 @@ const MAKE = {
       // A teardrop, flat-ish, pointed at +x.
       const t = (v.x + 1) / 2;
       v.x *= 1.0;
-      v.y *= 0.42 * (1 - t * 0.35);
-      v.z *= 0.55 * (1 - t * 0.45);
-      v.y += 0.38;
+      v.y *= 0.5 * (1 - t * 0.35);
+      v.z *= 0.6 * (1 - t * 0.45);
+      v.y += 0.46;
     });
     g.scale(1, 1, 1);
     colorize(g, (c, x, y, z) => {
@@ -340,4 +340,6 @@ export function createFoodBatch(capacity = 600, { shadows = true } = {}) {
   };
 }
 
-export const foodRadius = (type) => FOODS[type].r * 0.01 * VIS;
+// Seeds are the most common piece and the smallest: drawn bigger still, so a pour reads as a trail from across the table.
+const VIS_TYPE = { 0: 1.35, 6: 1.25 };
+export const foodRadius = (type) => FOODS[type].r * 0.01 * VIS * (VIS_TYPE[type] ?? 1);
