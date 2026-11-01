@@ -344,7 +344,7 @@ and, during play on touch screens, the stick and Bump button corners. Text is at
   "1st 388" under it when you're not leading); edge arrows for your burrow (seat colour and emblem, pulsing past 70), a golden
   seed and the paw. Hints appear as piped words on a small biscuit next to your hamster and crumble away.
 - **Intro.** "Round 2" biscuit banner drops in with a bounce, then 3, 2, 1, "EAT!" in huge piped numerals over the arena.
-- **Between rounds (7 s).** Cheeks with food left deflate (grey loss numbers); the camera pulls back to the whole arena; the
+- **Between rounds (7 s).** "Time!"; cheeks with food left deflate (grey loss numbers); the camera pulls back to the whole arena; the
   flags count up in rank order; a biscuit board slides down: rows of head, name, this round's heap and total, in rank order, and
   one reason line ("Mabel: 4 trips, never popped"; "Gus popped 3 times"); a nibbling biscuit counts to the next round; the host can
   skip.
@@ -443,19 +443,20 @@ All synthesized with Web Audio (`audio.js`, `music.js`).
 ## Store art and the trailer
 
 Posters (`?poster=<name>`, drawn by the real renderer from a staged, seeded scene):
-- **cover** (1280×720): four hamsters with ballooning cheeks racing across the gingham toward their burrows, one mid-POP
-  spraying seeds into the air, a toss landing; the title biscuit once, big, top left.
-- **action** (1280×720): close-up of a dashing hamster ramming an overstuffed rival, hit-stop frame, food flying, dust.
-- **win** (1280×720): the winner on top of a towering heap with its flag and crown, crumb confetti, rivals' smaller heaps.
-- **multi** (1280×720, `thumb-4`): eight hamsters spread over the blanket with the cat's paw shadow sweeping toward them.
-- **icon** (512×512): one hamster face front on, cheeks enormous, a golden seed in its paws, on a gingham disc; nothing in the
-  outer 10%, no text.
-- **badge-<id>** (256×256): a bold symbol on a seat-coloured disc for each badge.
+- **cover** (`thumb-1`, 1280×720): on the blanket, Gus with hot-pink cheeks far past full eyeing one more cookie while
+  Pepper dashes at him and Mabel carries a load home past her heap; the title biscuit once, big, bottom left.
+- **action** (`thumb-2`): a POP on the Kitchen Counter: Gus's cheeks spray out in a ring after Pepper's bump, dizzy stars.
+- **win** (`thumb-3`): the Birthday Table's winner by her burrow with a big heap, its flag and crown, confetti, and
+  "Most food wins!" on a biscuit.
+- **multi** (`thumb-4`): eight named hamsters at the Campsite all running for one golden seed.
+- **icon** (512×512): one hamster from above, cheeks far past full, a cookie beside it on the gingham; no text.
+- **badge-<id>** (256×256): a bold symbol on a coloured disc for each badge.
 
-Trailer (28 s, real autoplay gameplay with the game's own sound): 0-3 s a hamster gobbling a line of seeds, cheeks ballooning,
-then tumbling a load into its heap (+count); 3-8 s a full waddle home through a field of food; 8-13 s a bump on an overstuffed
-rival: POP, food sprays, everyone swarms; 13-18 s the golden seed beacon and the race to it; 18-24 s the cat: the shadow, the
-swat, hamsters flung, music up; 24-26 s the final count and the winner on its heap; 26-28 s the title biscuit over gameplay.
+Trailer (`store/trailer.mp4`, 23 s, six shots of real dev-autoplay rounds with the game's own sound): 0-5.6 s the opening
+rush on the blanket, "Full? Go home!", a load banked (+90); 5.6-9.4 s an overstuffed waddle home that banks +125 and jumps
+from 4th to 1st; 9.4-14.1 s a rival POPs, the spray fills my cheeks, "Too full!", my own POP, then the cat's shadow and swat;
+14.1-17.1 s the golden seed beacon, a paw sweep, +60; 17.1-20.4 s the buzzer and the round board; 20.4-22.9 s the title
+biscuit over the attract blanket.
 
 ## Originality check
 

@@ -873,7 +873,8 @@ async function boot() {
         showRing = false;
       }
       if (S.watch && (ph === 'round' || ph === 'intro')) hudView.tag = 'Watching · next round';
-      if (ph === 'roundEnd') ui.render('board', boardView(net, w));
+      // The buzzer's "Time!" first, then the board.
+      if (ph === 'roundEnd') ui.render(S.big && S.big.text === 'Time!' ? 'none' : 'board', boardView(net, w));
       else if (ph === 'results') ui.render('results', resultsView(net, w));
       else ui.render('none');
       if (ph === 'round') tickSound(m.secondsLeft ?? 0);
