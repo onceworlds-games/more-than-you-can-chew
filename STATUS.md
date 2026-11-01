@@ -1,9 +1,8 @@
 # Status (working notes, deleted at the end)
 
-Done:
-- DESIGN.md approved; fonts in game/fonts (Shrikhand, Bricolage Grotesque 800, OFL)
-- Pure modules: config, rng, arenas, rules, schedule, world, brain; balance sim scratch (heaps ~600 median, supply ~820 items)
+Done: whole game, tests (31 pass), check "It plays on the platform.", posters + badges reviewed and committed, DESIGN updated
+(netcode as built, balance, bots), README.
 
-Next:
-- renderer (ground, food, hamsters, fx), local solo loop, UI (biscuits), audio, net (helpers), progress, posters, tests, check, trailer
-- Update DESIGN numbers to the tuned ones (heaps ~600, Hoarder 1000)
+Running: trailer take1 (full autoplay round, 168 s) -> ~/Desktop/commit/onceworlds-games/_tools/originals/work/more-than-you-can-chew/
+Next: title take for the ending, cut 28 s with ffmpeg, contact sheet, commit store/trailer.mp4; final review; delete STATUS.md;
+final commit; report.

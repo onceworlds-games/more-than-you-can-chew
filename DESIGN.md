@@ -16,7 +16,7 @@ heap with a count-up; a hamster that ate one seed too many going POP and sprayin
 
 | Time | What happens | Hint (2-5 words, once) |
 |---|---|---|
-| 0 s | **Title.** The picnic is alive: six bot hamsters gobble and waddle on the blanket under the title, piped in white icing on a big bitten biscuit. At about 4 s one of them overstuffs and POPs (the attract seed is chosen so it does). One big **Play** biscuit (Space / Enter). A toothpick flag beside it shows "Best 412" once there is one. | none |
+| 0 s | **Title.** The picnic is alive: six bot hamsters gobble and waddle on the blanket under the title, piped in white icing on a big bitten biscuit. Now and then one of them overstuffs and POPs (Gus, the glutton, usually does). One big **Play** biscuit (Space / Enter). A toothpick flag beside it shows "Best 412" once there is one. | none |
 | ~2 s | **Play.** A crunch (the button loses a bite), music starts, the camera swoops down to your burrow and your hamster pops out of the hole in your seat's bandana. In a public server Play also readies you; alone, the match starts at once. With others, you wait in the lobby, which is the blanket itself: you can already run, eat practice crumbs and bank them. | "Ready!" is the platform's strip |
 | ~3 s | **Intro (4 s).** A biscuit banner drops in: "Round 1". Then 3, 2, 1 in piped numerals with marimba hits, then "EAT!". Every hamster waits at its door; a few seeds and a nut already lie on your doorstep. | none |
 | ~7 s | You move. First bite: a munch, your cheeks puff with a gulp bounce, the cheek ring round your feet starts to fill. | "Run over food" (only if you haven't eaten 3 s in) |
@@ -63,7 +63,7 @@ score is your heap. The zone is also a safe porch: nobody can be bumped inside i
 third of what's in their cheeks, get knocked back and stunned for 0.4 s. Ram an overstuffed hamster and they POP. Bumping an
 empty hamster only shoves it. A hamster that was just hit can't be hit again for 1 s.
 
-**Food.** The blanket starts strewn with food and a few pieces on every doorstep. Every 5 s an unseen picnicker's hand tosses a
+**Food.** The blanket starts strewn with food and a few pieces on every doorstep. Every 4 s an unseen picnicker's hand tosses a
 cluster (its shadow 1 s before it lands, so you can read where it'll fall). Four golden sunflower seeds a round land under a
 shaft of light: they fill 25 but are worth 60.
 
@@ -157,37 +157,44 @@ Bots Off isn't a buffet.
 **Host change.** Everything the host decides is in room state; the toss and paw schedules are pure functions of the match seed
 and match time, so a new host just carries on. It resumes the bots from the positions it was drawing.
 
-### Netcode: who decides what
+### Netcode: who decides what (as built)
 
-Pages own their **bodies**; the host owns the **food, every cheek's contents, the heaps and the clock**.
+Pages own their **bodies**; the host owns the **food, every cheek's contents, the heaps, pops and the bots**. The food
+schedule (opening spread, tosses, golden seeds, paw sweeps) is a pure function of the round's seed and arena, computed on every
+page, so a new host just carries on.
 
 | What | Where | Who writes it |
 |---|---|---|
-| My hamster: `{ x, y, a (facing), f (cheeks, for drawing), c (coat 0-7), s (bits: dash, stun, dizzy, home), d (dash count) }` | presence, 20 Hz | each page (moves its own hamster, predicted, never corrected by the network) |
-| Bots' bodies: `b: [[x, y, a, f, s], ...]` | the host's presence | host |
-| The round's arena, burrow seats, heaps | `host:ow.match` (`match.data`) | host |
-| The world: `{ r: roundId, g: eaten bitset of scheduled food, sp: [[id, type, x, y, landsAt]] (spills and scattered food), ch: { seat: [7 counts] } (cheek contents), ev: last 16 events [seq, kind, seat, x, y, by] (pop, bank, hit, golden) }` | `host:world`, written on change at most 10 Hz (under 6 KB) | host |
-| The food schedule (opening spread, tosses, golden seeds, paw sweeps) | nowhere: a pure function of match seed, round and arena | every page computes it |
+| My hamster: `{ k: 'p', r: round, x, y, a, f (cheeks, for drawing), c (coat), s (bits: dash, stun, dizzy, home) }`; `k: 'l'` with my heap `h` on the lobby's practice blanket, `k: 'w'` while watching | presence, at most 20 Hz | each page (moves its own hamster, never corrected by the network) |
+| Bots' bodies: `b: [[x, y, fill, bits], ...]` | the host's presence | host |
+| The round's arena and seed | `match.data` `{ a, s }` | host (`startRound`) |
+| The world record `host:world`: `{ r: roundId, t, g: eaten bitset of scheduled food (base64), d: spills and flung pieces [[id, type, x, y, land, fromX, fromY]], ch: cheek counts per seat, hp: heaps, e: each seat's last 16 confirmed bites, ev: last 16 events [seq, kind, seat, ...] (pop, bank, hit), st: per-seat trips, pops, golden, best trip }` | room state, under 15 KB | host: within 120 ms of any change (every bite marks it), else once a second |
 
 Calls (`createHost`):
-- **eat** (a claim, keyed by food id, window 120 ms, rate 25/s): the page eats at once (munch, cheeks grow) and claims. The host
-  checks the food exists and has landed and the claimer is within reach of it (presence, generous for lag), adds it to the
-  claimer's cheeks and rolls the pop (a hash of seed, round, seat and food id against the pop chance from the host's own count).
-  A lost claim takes the bite back (cheeks shrink, the food is the rival's). Bots eat directly on the host; a player's claim on
-  food a bot ate is refused.
-- **bank** (rpc, rate 4/s): the page sends it on entering its porch once its claims have settled; the host checks presence is
-  in that seat's porch and moves the cheeks into the heap.
-- **hit** (rpc, rate 4/s): `{ by, kind: 'bump' | 'paw', n }`. The bumped page (or the paw's victim) reports it; the host checks
-  the bumper was dashing or sweep n was live, then spills a third (half for the paw) of that seat's cheeks, or all of them if
-  overstuffed, at host-seeded spots.
+- **eat** (a claim keyed by piece **and** player, window 60 ms, rate 25/s): the page eats at once (munch, cheeks grow) and
+  claims. The host checks the claimer is near the piece (its presence or its recent trail, reach + 70 px for lag) and not dizzy,
+  then puts it in that seat's cheeks and rolls the pop from its own count (a hash of seed, round, seat and piece). A piece eaten
+  by someone else in the last 0.7 s is **shared**: the second claimer gets one too, so a bite a player saw never undoes. The page
+  shows host cheeks + its bites in flight − a bank in flight; the bites leave "in flight" when the record lists them.
+- **bank** (rpc, rate 4/s): sent on entering the porch once the page's bites have settled (at most 450 ms); the host checks the
+  seat is at its porch and moves the cheeks into the heap. The page shows the +count at once and doesn't repeat it when the
+  record confirms.
+- **hit** (rpc, rate 4/s): `{ by, k: bump | paw, n }`. The hit page reports it; the host checks the dasher was dashing and near,
+  or sweep n was live and the hamster in its band, then spills a third (half for the paw), or pops an overstuffed one.
 
-Who decides a bump: the dasher's page sees contact (against the target as it draws it) and sends `{ t: 'bump', dx, dy }` to the
-target (`room.send(..., { to })`; for a bot target, to the host). The target's page accepts it if the dasher's latest presence is
-within 140 px and dashing, applies the knockback and stun to its own body, and calls **hit**. The host does both sides for bots.
-So the attacker gets the hit it saw, within a sanity bound, and each page stays the only authority on its own body.
+Bumps: the dasher's page sees contact against the target as it draws it, marks the target immune locally (no repeats) and sends
+`{ t: 'bump', by, to, dx, dy, r }` to the target (for a bot, to the host). The target accepts it if the dasher's dash bit was
+seen in the last 0.7 s (the bit stays up 0.35 s from a dash's start, so a dash that ends in a bump within a frame still goes
+out) and the dasher is within 150 px of it now or lately; a bump that arrives before the dash waits up to 0.4 s for it. The
+target applies the knock to its own body and calls **hit**.
 
-A page that reloads mid-round takes its position from `room.me.presence` and its cheeks from `host:world`. Every value read from
-the room is checked for shape and range (coordinates inside the arena, counts 0-99, ids short strings); names are drawn as text.
+On a page that isn't the host, food in the paw's band leaves the table the moment the swat starts (the record brings the flung
+pieces back where they land), so nobody bites a piece the paw already took.
+
+Measured in the tests (`test/net.test.mjs`, two pages with 120 ms each way): 0 bites lost or undone over a round; a hunter's
+18 bumps on the other page, 17 taken, 0 refused (the rest hit an immune hamster). A page that reloads mid-round takes its
+position from its presence and its cheeks and heap from the record; a host that reloads or leaves hands over without losing
+heaps or food. Every value read from the room is checked for shape and range; names are drawn as text.
 
 ## Progression and reasons to come back
 
@@ -208,7 +215,7 @@ the room is checked for shape and range (coordinates inside the arena, counts 0-
 | `pop` | POP! | Burst your cheeks |
 | `bully` | Bully | Pop a rival with a bump |
 | `golden-seed` | Golden Seed | Bank a golden sunflower seed |
-| `hoarder` | Hoarder | Bank 500 in one round |
+| `hoarder` | Hoarder | Bank 1,000 in one round |
 | `clean-plate` | Clean Plate | Win a match without popping |
 | `buzzer-beater` | Buzzer Beater | Bank in the last 3 seconds |
 | `daily-crumbs` | Daily Crumbs | Finish a Daily |
@@ -246,12 +253,11 @@ World units are px at zoom 1. All of these live in one `config.js`.
 | Cookie | 30 | 30 | 22 | 4% |
 | Golden sunflower seed | 25 | 60 | 10 | 4 a round, scheduled |
 
-**Food schedule** (per round, 8 seats): an opening spread of 72 pieces weighted to the middle plus a doorstep of 3 seeds and a
-nut 80-140 px in front of each burrow; a toss every 5.0 s (±1 s) from 0:04 to 2:00, then every 3.5 s to 2:27; each toss 7-13
-pieces (at least one of size 10+) in a cluster of radius 70-150, centred in the middle third 60% of the time and anywhere at
-least 160 px from a burrow otherwise; golden seeds at about 0:25, 1:05, 1:40 and 2:12 (±3 s) in the middle 60%, after a 2 s
-beacon. About 410 pieces worth about 2,700, plus 240 in golden seeds. Eight hamsters could carry far more than that, so food is
-contested and spills matter.
+**Food schedule** (per round): an opening spread of 140 pieces weighted to the middle plus a doorstep of 3 seeds and a nut in
+front of each burrow; a toss every 4 s (±1 s) from 0:04, then every 3.5 s (±0.7 s) from 2:00; each toss 13-23 pieces (at least
+one of size 10+) in a cluster, its shadow 1 s before it lands; golden seeds at about 0:25, 1:05, 1:40 and 2:12 (±3 s) after a
+2 s beacon. About 815 pieces a round. Every piece lands on the field, clear of porches and obstacles (tested on every arena).
+Eight hamsters bank about 5,000 of it between them, so food is contested and spills matter.
 
 **Bump and cat**
 
@@ -275,15 +281,18 @@ hamster a little above centre on touch screens (thumbs below).
 **Bots** (the host's page, or the page alone in solo). They read the same screen a player does: food they can see, cheeks,
 shadows, the paw band. Each thinks on its own clock.
 
-| | Easy | Normal | Hard |
+| | Easy (0.15) | Normal (0.5) | Hard (0.85) |
 |---|---|---|---|
-| Re-plans every | 600 ms | 400 ms | 250 ms |
-| Steering error | ±25° | ±12° | ±4° |
-| Goes home at | 45-80 | 70-95 | 85-100 |
-| Steers around food when full | 40% of the time | 75% | 95% |
-| Bumps | rarely, whoever is close | full rivals in reach | overstuffed and full rivals, the leader, cuts off paths home |
-| Dodges the paw | 20% | 60% | 90% |
-| Golden seed | half the time | when under 70 full | when under 85 full |
+| Re-plans every | 0.56 s | 0.42 s | 0.28 s |
+| Steering error | ±25° | ±16° | ±6° |
+| Goes home at | 70-100 | 65-92 | 60-84 |
+| Steers around food that would overstuff it | 32% of trips | 60% | 88% |
+| Takes a bite that overstuffs anyway | 30% of trips | 19% | 7% |
+| Dodges the paw | 27% | 54% | 80% |
+| Golden seed | up to 47 full | up to 62 | up to 78 |
+
+Skill is one number from 0 to 1 (the lobby's choices above; Picnics climb 0.1, 0.22, 0.38, 0.5, 0.6, 0.72, 0.85, 0.95). A
+sharper bot banks smaller loads more often and steers around the pieces that would overstuff it: that is what wins.
 
 Personalities shift those numbers. Eight bot hamsters; no two in a match share a coat:
 
@@ -301,15 +310,15 @@ Personalities shift those numbers. Eight bot hamsters; no two in a match share a
 Picnics set the skill: 1 Easy, 2 Easy (sharper), 3 Normal (softer), 4 Normal, 5 Normal (sharper), 6 Hard (softer), 7 Hard,
 8 Hard (sharpest).
 
-**How the numbers are checked** (node tests running the pure modules, many seeds):
-- 8 Normal bots, 200 rounds: the round ends at 2:30; food on the blanket stays between 40 and 180 pieces after the opening; the
-  median heap is 180-320; a round winner's heap is 280-520; a bot pops 0.5-2 times a round (Gus more, Mabel almost never).
-- Skill ordering: one Hard bot among Normals wins at least 35% of rounds; one Easy bot still banks a median of 100+; Normal
-  beats Easy.
-- No runaway: the leader at 1:15 wins the round less than 70% of the time; the last 30 s (golden seed, cat) changes the
-  leader in at least 20% of rounds.
-- Every Picnic is winnable by a scripted good player (a Hard brain with no personality) at least half the time.
-- Speed, pop chance, spill and dash numbers above, read back from the code.
+**How the numbers are checked** (`npm test`, the pure modules over many seeds):
+- Every arena: the round ends at 2:30 with every cheek emptied, nothing is ever NaN or off the arena, someone banks.
+- Default bots (Normal, each with its personality): median heap about 620, a round's winner about 1,000, first over second
+  under 1.35, about 30 bumps a round, never fewer than 8 pieces to find between 0:10 and 2:25.
+- Skill ordering in mixed rounds: Easy bots bank a median of about 390, Normal about 515, Hard about 850; Easy still banks.
+- Personalities: Gus (glutton) pops the most and banks the least; Mabel (banker) pops the least and banks the most.
+- Food schedule: the same on every page for a seed, every piece on a fair spot, golden seeds and the cat in every round.
+- Online: a whole match alone with bots, heaps scored by the host; predicted bites and banks under lag; bumps under lag; the
+  host reloading and leaving mid-round; a latecomer watching and playing the next round.
 
 ## Every screen
 
@@ -320,7 +329,8 @@ and, during play on touch screens, the stick and Bump button corners. Text is at
   "More Than You Can Chew" in piped icing, a bite out of its corner. Lower middle: the Play biscuit (64 px tall on phones, with a
   Space key cap on keyboards) and, if any, a toothpick flag "Best 412". Nothing else.
 - **Lobby.** The chosen arena live, your hamster at your burrow, free to run, eat practice crumbs and bank them (practice heap,
-  not counted); other players' hamsters move by presence; bots doze in their doorways with their names. Desktop and landscape:
+  not counted); other players' hamsters run on it too, moved by their pages' presence (every page seats the lobby's players
+  in the same order, so each owns the same burrow everywhere); bots doze in their doorways with their names. Desktop and landscape:
   a lobby biscuit card on the right (300 px): the eight seats (avatar or bot hamster head, name, tick when ready, host marker; in
   a private server empty seats are an Invite biscuit), the settings (host: Arena with ◀ ▶ and its twist label, Rounds 1/3/5,
   Bots Off/Easy/Normal/Hard as biscuit toggles; others see the values), Coat ◀ ▶, then the Picnics (with "3/8") and Daily
@@ -485,10 +495,12 @@ mode runs and nothing throws.
   runs a whole round alone for solo, the title and tests, or as the host's world online), `bots.js` (the brain), `codec.js`
   (the world state, checked on read).
 - Page: `main.js` (boot, join first, screens), `net.js` (room glue: createMatch, createHost, claims, presence), `render.js`,
-  `hamster.js`, `food.js`, `fx.js`, `ui.js` (biscuits), `audio.js`, `music.js`, `poster.js`, `autoplay.js` (capture only, not
-  in production).
-- Tests in `test/` (`node --test "test/*.test.mjs"`): rules and scoring, the schedule, bots, balance simulations, whole rounds
-  for many seeds, the room flow through a fake room.
+  `hamster.js`, `food.js`, `fx.js`, `ui.js` (biscuits), `audio.js`, `music.js`, `poster.js` (store art and every screen at any
+  size, `?poster=`). Autoplay for capture (`?autoplay=1`, never on onceworldsusercontent.com) drives your hamster with a
+  skill-0.9 bot brain.
+- Tests in `test/` (`node --test "test/*.test.mjs"`): rules and scoring, the world, the schedule, bots and balance over whole
+  rounds, and the online flow between pages through a fake room with lag (`test/hub.mjs`; skipped when the SDK's built helpers
+  aren't there).
 
 ## Changes from the spec
 
@@ -503,3 +515,7 @@ mode runs and nothing throws.
 - **The game draws its own one countdown** (the room's is 0), inside a 4 s round intro.
 - **Added**: the safe porch, 1 s immunity after a hit, a "Bots: Off" setting, the buzzer (unbanked food is lost), the leader's
   crown, and the eight arenas' twists as listed. Heaps reset each round; the match total is the sum.
+- **Bites are shared on a tie** (decided in the build): a piece two hamsters reached within 0.7 s goes into both cheeks, so the
+  coordinator's rule holds that a bite never visibly undoes; it costs a few extra pieces a round.
+- **A solo win counts** toward wins (the Banded coat and the wins board) like a match won; Clean Plate too.
+- **Arena choice follows Picnics**: a host's arena picker offers the arenas that host has opened.

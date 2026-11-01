@@ -979,7 +979,6 @@ async function boot() {
     }
   }
 
-
   function introBig(introT, title, sub) {
     if (introT < 1.1) S.big = { kind: 'banner', text: title, sub, t: introT, life: 1.1, fixed: true };
     else {
