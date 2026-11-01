@@ -19,6 +19,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const HAM_SCALE = 0.235;
 // A heap's mix: mostly seeds and nuts, some of everything.
 const PILE = [0, 1, 0, 2, 3, 0, 1, 4, 2, 0, 5, 1, 3, 0, 2, 1, 4, 0, 3, 1];
+const CAKE_CRUMBS = ['#5a2e1c', '#7a4026', '#f4e3cf', '#d8343a'];
 
 // ------------------------------------------------------------------ decals
 
@@ -402,6 +403,7 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
   const envs = new Map();
   const hams = new Map();
   const heaps = new Map(); // id -> { flag, shown, pop, seat }
+  const cakeFlung = new Set(); // cake-shower pieces already flung (for their crumb burst)
   const flights = []; // purely visual: pieces carried from a burrow to its heap
   let time = 0;
   let quality = 'high';
@@ -650,6 +652,8 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
         o.x = view.x * U;
         o.z = view.y * U;
         o.dist = view.dist;
+        o.pitch = view.pitch;
+        o.lift = view.lift;
       }
       if (view.snap) rig.ready = false;
       rig.update(o, dt);
@@ -787,6 +791,27 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
           const z = Math.sin(u * Math.PI) * 0.75;
           food.add(f.type, x * U, groundY(x, y) + R + z, y * U, yaw + u * 9, u * 7, R, 0, u * 5);
           blobs.add(x * U, 0.004, y * U, R * 3, R * 3, 0, 0.35 * (1 - z));
+        } else if (f.src === 'cake' && w.arena.cake) {
+          // Cake showers: each piece is flung off the top of the cake and arcs out to where its shadow waits.
+          const c = w.arena.cake;
+          const u = clamp(1 - (f.land - t) / SCHEDULE.tossShadow, 0, 1);
+          blobs.add(f.x * U, 0.004, f.y * U, R * (1.2 + u * 2.2), R * (1.2 + u * 2.2), 0, 0.12 + u * 0.4);
+          if (u <= 0) continue;
+          const dx = f.x - c.x;
+          const dy = f.y - c.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const sx = c.x + (dx / d) * c.r * 0.45;
+          const sy = c.y + (dy / d) * c.r * 0.45;
+          const top = (arena.built.group.userData.cakeTop || 0.8) + R;
+          const x = sx + (f.x - sx) * u;
+          const y = sy + (f.y - sy) * u;
+          const z = top * (1 - u) + Math.sin(u * Math.PI) * 0.9;
+          food.add(f.type, x * U, R + z, y * U, yaw + u * 7, u * 5, R, 0, u * 4);
+          if (!cakeFlung.has(f.id)) {
+            cakeFlung.add(f.id);
+            if (cakeFlung.size > 200) cakeFlung.clear();
+            fx.crumbs(sx * U, top, sy * U, 7, CAKE_CRUMBS, 1.4, 1.2, 0.03);
+          }
         } else {
           const lead = f.src === 'golden' ? SCHEDULE.beacon : SCHEDULE.tossShadow;
           const u = clamp(1 - (f.land - t) / lead, 0, 1);

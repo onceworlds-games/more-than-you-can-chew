@@ -31,6 +31,12 @@ async function importHelpers() {
 
 const withTimeout = (p, ms, fallback = null) => Promise.race([Promise.resolve(p).catch(() => fallback), new Promise((r) => setTimeout(() => r(fallback), ms))]);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const turnTo = (a, b, k) => {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * k;
+};
 const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // Crumb colours per food type.
@@ -1315,7 +1321,19 @@ export async function boot() {
       dress(s.w);
       syncOthers(s.w);
       const wardrobe = S.screen === 'wardrobe';
-      const events = s.step(gdt, () => (wardrobe ? { mx: 0, my: 0, dash: false } : myInput(s.w, me)));
+      // In the wardrobe the hamster trots out onto the cloth, clear of its burrow and flag, to pose.
+      const out = me.burrow.ny < -0.5 ? 270 : 110; // the camera looks from the bottom edge: keep its burrow out of the shot
+      const spot = wardrobe ? { x: me.burrow.x + me.burrow.nx * out, y: me.burrow.y + me.burrow.ny * out } : null;
+      const toSpot = () => {
+        const dx = spot.x - me.x;
+        const dy = spot.y - me.y;
+        const d = Math.hypot(dx, dy);
+        const k = d > 8 ? Math.min(1, d / 60) / d : 0;
+        return { mx: dx * k, my: dy * k, dash: false };
+      };
+      // Keep the fitting room clear: no food on the way or round the spot to nibble or block the view.
+      if (spot) for (const f of [...s.w.food.values()]) if ((f.x - spot.x) ** 2 + (f.y - spot.y) ** 2 < 170 ** 2) s.w.removeFood(f.id);
+      const events = s.step(gdt, () => (wardrobe ? toSpot() : myInput(s.w, me)));
       for (const e of events) if (e.k !== 'bumpOut') juice(e, s.w, 'me');
       trails(s.w, gdt);
       w = s.w;
@@ -1326,10 +1344,12 @@ export async function boot() {
       if (S.net) S.net.lobbyPresence(me, me.heap);
       S.camTarget = me;
       if (wardrobe) {
-        // Face the camera and pose.
-        me.a += (Math.PI / 2 - me.a) * (1 - Math.exp(-dt * 6));
+        // Once there, turn to face the camera.
+        if (me.speed < 15 && Math.hypot(spot.x - me.x, spot.y - me.y) < 14) me.a = turnTo(me.a, Math.PI / 2, 1 - Math.exp(-dt * 5));
         const portrait = document.body.classList.contains('portrait');
-        view = { mode: 'fixed', x: me.x + (portrait ? 0 : 52), y: me.y + (portrait ? 75 : 12), dist: portrait ? 3.7 : 3.0 };
+        view = portrait
+          ? { mode: 'fixed', x: spot.x, y: spot.y + 62, dist: 3.5, pitch: 0.6, lift: 0.1 }
+          : { mode: 'fixed', x: spot.x + 34, y: spot.y + 6, dist: 2.1, pitch: 0.5, lift: 0.12 };
         tags = false;
         showRing = false;
         ui.render('wardrobe', wardrobeView());

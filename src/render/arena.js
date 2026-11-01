@@ -752,7 +752,7 @@ export function buildArena(arena, { quality = 'high', seats = 8, burrows = [] } 
     lawn.position.set(W / 2, -0.03, H / 2);
     lawn.receiveShadow = true;
     group.add(lawn);
-    const blanket = cloth(W - 2.2, H - 2.3, recolored('gingham_check', { repeat: 1 / 2.2, c0: '#8a1a16', c1: '#d0533f', c2: '#fff3e2', sheen: 0.45, normalScale: 1.4 }), { folds: 0.008, seg: 5, droop: 0.04 });
+    const blanket = cloth(W - 2.2, H - 2.3, recolored('gingham_check', { repeat: 1 / 3.2, c0: '#9e2f25', c1: '#d26a55', c2: '#f0e0c6', sheen: 0.45, normalScale: 1.4 }), { folds: 0.008, seg: 5, droop: 0.04 });
     blanket.position.set(W / 2, 0, H / 2);
     group.add(blanket);
     const g = grass({ count: grassN, area: { x0: -6, x1: W + 6, z0: -5, z1: H + 4 }, keepOut: [{ x0: 1.0, x1: W - 1.0, z0: 1.05, z1: H - 1.05 }], height: [0.22, 0.75] });
@@ -773,7 +773,7 @@ export function buildArena(arena, { quality = 'high', seats = 8, burrows = [] } 
     const surf = {
       counter: () => texMaterial('kitchen_wood', { repeat: [big / 6, big / 6], normalScale: 0.6 }),
       shelf: () => texMaterial('white_planks_clean', { repeat: [big / 5, big / 5] }),
-      party: () => recolored('gingham_check', { repeat: 1 / 2.4, c0: '#2d5fb8', c1: '#86aee8', c2: '#f7fbff', sheen: 0.4, normalScale: 1.2 }),
+      party: () => recolored('gingham_check', { repeat: 1 / 3.2, c0: '#35609f', c1: '#8aa9d6', c2: '#e9eef0', sheen: 0.4, normalScale: 1.3 }),
       camp: () => texMaterial('brown_mud_leaves_01', { repeat: big / 6 }),
       dinner: () => texMaterial('wood_table', { repeat: big / 6, normalScale: 0.7 }),
       farm: () => texMaterial('wood_table', { repeat: big / 7, normalScale: 0.9, color: '#e8dccb' }),
@@ -825,7 +825,7 @@ export function buildArena(arena, { quality = 'high', seats = 8, burrows = [] } 
         addModel('garden_gnome', 2.2, x, z, -0.6, { axis: 'y' });
         break;
       case 'cake':
-        addModel('strawberry_chocolate_cake', r * 2.05, x, z, 0.3);
+        addModel('strawberry_chocolate_cake', r * 2.05, x, z, 0.3, { then: (m) => (group.userData.cakeTop = new THREE.Box3().setFromObject(m).max.y) });
         break;
       case 'present':
         add(present(o.w * U, o.h * U, o.v ? '#3fa7f2' : '#ff6fb0', o.v ? '#ffcb2e' : '#fff2d9'), x, z, 0, o.v ? 0.15 : -0.1);

@@ -269,6 +269,8 @@ export function createRig(stage) {
     dist: 11,
     tdist: 11,
     pitch: 0.9, // radians above the table
+    dip: 0, // added to pitch by a fixed view that asks for its own angle
+    lift: 0, // height of the point the camera looks at
     yaw: 0,
     punch: 0,
     punchV: 0,
@@ -281,7 +283,8 @@ export function createRig(stage) {
   };
   const look = new THREE.Vector3();
   /**
-   * o: { mode: 'follow' | 'drift' | 'overview' | 'fixed', x, z (target), vx, vz, dist, arena: { w, h } (world units) }
+   * o: { mode: 'follow' | 'drift' | 'overview' | 'fixed', x, z (target), vx, vz, dist, arena: { w, h } (world units),
+   *      pitch, lift (fixed only: a lower angle and a raised aim, for showing off one hamster) }
    */
   rig.update = (o, dt) => {
     rig.t += dt;
@@ -291,13 +294,15 @@ export function createRig(stage) {
     let tx = rig.tx;
     let tz = rig.tz;
     let dist = rig.tdist;
+    let dipTo = 0;
+    let liftTo = 0;
     // Distance that shows about `span` world units across.
     const fov = (cam.fov * Math.PI) / 180;
     const across = (span) => span / (2 * Math.tan(fov / 2) * Math.max(0.5, cam.aspect));
     if (o.mode === 'follow') {
       tx = o.x + (o.vx || 0) * 0.35;
       tz = o.z + (o.vz || 0) * 0.3;
-      const span = portrait ? 5.1 : 8.8;
+      const span = portrait ? 5.1 : 7.8;
       dist = across(span) * (o.zoom || 1);
       dist = Math.min(dist, portrait ? 16 : 22);
     } else if (o.mode === 'drift') {
@@ -313,6 +318,8 @@ export function createRig(stage) {
       tx = o.x;
       tz = o.z;
       dist = o.dist;
+      if (o.pitch) dipTo = o.pitch - rig.pitch;
+      if (o.lift) liftTo = o.lift;
     }
     // Keep the view over the arena (with a margin of the world around it).
     const halfW = (dist * Math.tan(fov / 2) * cam.aspect) * 0.8;
@@ -328,12 +335,16 @@ export function createRig(stage) {
       rig.x = tx;
       rig.z = tz;
       rig.dist = dist;
+      rig.dip = dipTo;
+      rig.lift = liftTo;
       rig.ready = true;
     }
     const k = 1 - Math.exp(-dt * (o.mode === 'follow' ? 5 : 1.6));
     rig.x += (tx - rig.x) * k;
     rig.z += (tz - rig.z) * k;
     rig.dist += (dist - rig.dist) * (1 - Math.exp(-dt * 2.2));
+    rig.dip += (dipTo - rig.dip) * (1 - Math.exp(-dt * 2.2));
+    rig.lift += (liftTo - rig.lift) * (1 - Math.exp(-dt * 2.2));
     // Punch: a spring that eases the camera in and back.
     rig.punchV += (-rig.punch * 90 - rig.punchV * 14) * dt;
     rig.punch += rig.punchV * dt;
@@ -346,8 +357,8 @@ export function createRig(stage) {
     rig.shakeX *= Math.exp(-dt * 10);
     rig.shakeZ *= Math.exp(-dt * 10);
     const d = rig.dist * (1 - (rig.reduced ? 0 : rig.punch));
-    const pitch = rig.pitch + (portrait ? 0.08 : 0);
-    look.set(rig.x + sx, 0, rig.z + sz);
+    const pitch = rig.pitch + rig.dip + (portrait ? 0.08 : 0);
+    look.set(rig.x + sx, rig.lift, rig.z + sz);
     cam.position.set(look.x + Math.sin(rig.yaw) * Math.cos(pitch) * d, Math.sin(pitch) * d, look.z + Math.cos(rig.yaw) * Math.cos(pitch) * d);
     cam.lookAt(look);
     stage.aimSun(look.x, look.z - 0.5, Math.min(14, d * 0.62 + 2));
