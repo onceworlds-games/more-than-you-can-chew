@@ -30,7 +30,14 @@ export function createAudio() {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.ratio.value = 4;
-    master.connect(comp).connect(ctx.destination);
+    // A limiter last, so a pop, a fanfare and the music landing together never clip.
+    const limit = ctx.createDynamicsCompressor();
+    limit.threshold.value = -2;
+    limit.knee.value = 0;
+    limit.ratio.value = 20;
+    limit.attack.value = 0.001;
+    limit.release.value = 0.06;
+    master.connect(comp).connect(limit).connect(ctx.destination);
     sfx = ctx.createGain();
     sfx.gain.value = 0.85;
     sfx.connect(master);

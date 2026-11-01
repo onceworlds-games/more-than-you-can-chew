@@ -1133,6 +1133,13 @@ export async function boot() {
           startSolo({ kind, n: Number(n) });
         } else if (kind === 'wardrobe') handlers.wardrobe();
         else startSolo({ kind });
+        // `skip=90` plays the first 90 s of the round unseen, to capture its later part.
+        const skip = Number(params.get('skip')) || 0;
+        if (S.solo && skip > 0) {
+          for (let i = 0; i < Math.round(skip * 60); i++) S.solo.step(1 / 60, () => myInput(S.solo.w, S.solo.mine));
+          S.solo.w.drain();
+          hud.clear();
+        }
       }
     }
     if (autoplay && S.screen === 'lobby' && now > 2400 && !S.net && params.get('stay') !== '1') startSolo({ kind: params.get('mode') === 'daily' ? 'daily' : 'quick' });
