@@ -99,8 +99,10 @@ export const COATS = [
   { key: 'cinnamon', name: 'Cinnamon', base: '#C9773E', dark: '#94522A', belly: '#F6DCC0', mark: null },
   { key: 'panda', name: 'Panda', base: '#F6F3EE', dark: '#D6D0C6', belly: '#FFFFFF', mark: { color: '#2A2422', kind: 'panda' } },
   { key: 'sunflower', name: 'Sunflower', base: '#F2C232', dark: '#C48E16', belly: '#FFF4C8', mark: { color: '#FFE88A', kind: 'shimmer' } },
+  { key: 'winter', name: 'Winter White', base: '#ECEAEC', dark: '#B9B4BC', belly: '#FFFFFF', mark: { color: '#6F6873', kind: 'stripe' } },
+  { key: 'lilac', name: 'Lilac', base: '#B9A8CC', dark: '#8E7CA6', belly: '#F3EDF7', mark: null },
 ];
-// Bot-only coats (index 8+).
+// Bot-only coats (index 10+).
 export const BOT_COATS = [
   { key: 'sable', name: 'Sable', base: '#6A4A36', dark: '#4A3122', belly: '#E9D6C2', mark: { color: '#F6EEE4', kind: 'blaze' } },
   { key: 'spot', name: 'Spot', base: '#F7F4EF', dark: '#D8D1C6', belly: '#FFFFFF', mark: { color: '#2A2422', kind: 'spot' } },
@@ -118,6 +120,8 @@ export const COAT_UNLOCKS = [
   { coat: 'cinnamon', label: 'Win Picnic 4', test: (p) => !!p.picnics.won[3] },
   { coat: 'sunflower', label: 'Bank 10 golden seeds', test: (p) => p.totals.golden >= 10 },
   { coat: 'panda', label: 'Win all 8 Picnics', test: (p) => p.picnics.won.filter(Boolean).length >= 8 },
+  { coat: 'winter', label: 'Bank 25 Stuffed cheekfuls', test: (p) => (p.totals.stuffed ?? 0) + (p.totals.bursting ?? 0) >= 25 },
+  { coat: 'lilac', label: 'A 7-day Daily streak', test: (p) => (p.daily?.bestStreak ?? 0) >= 7 },
 ];
 
 // Seats: a bandana colour and an emblem each (colour is never the only cue).
@@ -137,11 +141,11 @@ export const BOTS = [
   { name: 'Gus', coat: 3, kind: 'glutton' },
   { name: 'Pepper', coat: 4, kind: 'bully' },
   { name: 'Mabel', coat: 0, kind: 'banker' },
-  { name: 'Dot', coat: 9, kind: 'grazer' },
-  { name: 'Rocco', coat: 8, kind: 'gambler' },
+  { name: 'Dot', coat: 11, kind: 'grazer' },
+  { name: 'Rocco', coat: 10, kind: 'gambler' },
   { name: 'Fig', coat: 2, kind: 'scavenger' },
   { name: 'Bea', coat: 1, kind: 'plain' },
-  { name: 'Clem', coat: 10, kind: 'plain' },
+  { name: 'Clem', coat: 12, kind: 'plain' },
 ];
 export const BOT_NAMES = BOTS.map((b) => b.name);
 export const botByName = (name) => BOTS.find((b) => b.name === String(name).replace(/ \d+$/, '')) ?? BOTS[6];

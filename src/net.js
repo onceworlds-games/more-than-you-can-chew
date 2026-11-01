@@ -5,10 +5,11 @@
 import { createWorld, DYN } from './sim/world.js';
 import { createBrain } from './sim/brain.js';
 import { arenaById, ARENAS } from './sim/arenas.js';
-import { FOODS, ROUND, POP, PORCH_R, BOT_NAMES, DIFFICULTY, botByName, COATS, SPILL_LAND, FOOD_TYPES, CHAIN } from './sim/config.js';
+import { FOODS, ROUND, POP, PORCH_R, BOT_NAMES, DIFFICULTY, botByName, COATS, SPILL_LAND, FOOD_TYPES, CHAIN, CHILI } from './sim/config.js';
 import { fillOf, worthOf, reach, emptyCheeks, popChance, bankValue, tierOf } from './sim/rules.js';
 import { inBand } from './sim/schedule.js';
 import { hash32, unit } from './sim/rng.js';
+import { decodeOutfit, dressHam, BOT_OUTFITS } from './wardrobe.js';
 
 export const BOT_LEVELS = ['off', 'easy', 'normal', 'hard'];
 export const JOIN = {
@@ -55,6 +56,7 @@ export function readPresence(p, arena) {
     s: Number.isInteger(p.s) ? p.s & BITS : 0,
     d: Number.isInteger(p.d) ? p.d : 0,
     h: finite(p.h) ? clamp(Math.floor(p.h), 0, 99999) : 0,
+    o: decodeOutfit(p.o),
   };
 }
 
@@ -103,7 +105,7 @@ export function readSnapshot(v) {
 /**
  * @param room the joined room
  * @param helpers { createMatch, createHost, createBots, t }
- * @param o { coat(): my coat, onEvent(e), now(): ms }
+ * @param o { coat(): my coat, outfit(): my outfit (encodeOutfit), onEvent(e), now(): ms }
  */
 export function createOnline(room, helpers, o = {}) {
   const { createMatch, createHost, createBots, t } = helpers;
@@ -111,6 +113,13 @@ export function createOnline(room, helpers, o = {}) {
   const onEvent = o.onEvent || (() => {});
   const nowMs = o.now || (() => Date.now());
   const myId = () => (room.me ? room.me.id : '');
+  const outfitCode = () => {
+    try {
+      return o.outfit ? o.outfit() | 0 : 0;
+    } catch {
+      return 0;
+    }
+  };
 
   let world = null;
   let worldKey = '';
@@ -132,7 +141,7 @@ export function createOnline(room, helpers, o = {}) {
   const lastBots = new Map(); // bot id -> last position seen (for a new host)
   const dashSeen = new Map(); // player id -> ms their dash bit was last seen
   const stats = { bumpsSent: 0, bumpsTaken: 0, bumpsRefused: 0, claimsLost: 0, claimsRejected: 0, banks: 0 };
-  const mine = { pops: 0, popsByBump: 0, golden: 0, bestTrip: 0, lastBank: null, specials: 0, st: [] };
+  const mine = { pops: 0, popsByBump: 0, golden: 0, bestTrip: 0, lastBank: null, specials: 0, spice: 0, bumps: 0, st: [] };
   let wasHost = false;
   let presenceAt = 0;
   let hostHeap = 0;
@@ -345,7 +354,10 @@ export function createOnline(room, helpers, o = {}) {
         const size = FOODS[f.type].size;
         const chance = popChance(fill, size);
         world.emit({ k: 'eat', id: h.id, type: f.type, x: f.x, y: f.y, fill, food: f.id, chance, chain: c, predicted: true });
-        if (FOODS[f.type].special) mine.specials++;
+        if (FOODS[f.type].special) {
+          mine.specials++;
+          mine.spice |= 1 << (f.type - CHILI);
+        }
         world.effect(h, f.type);
         // The host rolls the pop the same way from the same numbers: see it now, not a round trip later.
         if (chance > 0 && unit(world.seed, world.round, h.id, f.id) < chance) predictPop(h);
@@ -400,6 +412,11 @@ export function createOnline(room, helpers, o = {}) {
       brains: (h, w) => (h.bot ? createBrain(h, w, { skill: h.skill, kind: h.kind, seed: `${data.s}:${h.id}` }) : null),
     });
     worldKey = match.roundId;
+    // What everyone wears: mine, the others' (from presence), the bots'.
+    for (const h of world.hams) {
+      const out = h.bot ? BOT_OUTFITS[String(h.name).replace(/ \d+$/, '')] : h.id === myId() ? decodeOutfit(outfitCode()) : (latestPresence(h.id) || {}).o;
+      dressHam(h, out);
+    }
     bumpWait.length = 0;
     wasHost = isHost;
     pending.clear();
@@ -418,6 +435,8 @@ export function createOnline(room, helpers, o = {}) {
     mine.bestTrip = 0;
     mine.lastBank = null;
     mine.specials = 0;
+    mine.spice = 0;
+    mine.bumps = 0;
     mine.st = [];
     acc = 0;
     setRoles(isHost);
@@ -757,6 +776,7 @@ export function createOnline(room, helpers, o = {}) {
       w.setRemote(h.id, { x: p.x, y: p.y, a: p.a, away, dash: !!(p.s & 1), dizzy: !!(p.s & 4), hot: !!(p.s & 16), gum: !!(p.s & 32), tickle: !!(p.s & 64) });
       h.speed = Math.hypot(p.x - ox, p.y - oy) * 60;
       h.coat = p.c;
+      dressHam(h, p.o);
       // Their own page's fill draws their cheeks (it includes their bites in flight); the host's numbers decide.
       if (!w.authority) h.fill = p.f;
       if (latest && latest.s & 1) dashSeen.set(h.id, nowMs());
@@ -787,13 +807,13 @@ export function createOnline(room, helpers, o = {}) {
     const w = world;
     const me = w ? w.byId.get(myId()) : null;
     if (!me || room.spectating) {
-      room.setPresence({ k: 'w', x: 0, y: 0, c: o.coat ? o.coat() : 0 });
+      room.setPresence({ k: 'w', x: 0, y: 0, c: o.coat ? o.coat() : 0, o: outfitCode() });
       return;
     }
     // The dash bit stays up a moment after the dash: a dash that ends in a bump within a frame still goes out.
     const dashed = me.dashT > 0 || w.t - (me.lastDashT ?? -9) < 0.35;
     const bits = (dashed ? 1 : 0) | (me.stunT > 0 ? 2 : 0) | (me.dizzyT > 0 ? 4 : 0) | (me.home ? 8 : 0) | specialBits(me);
-    const pres = { k: 'p', r: match.round, x: Math.round(me.x), y: Math.round(me.y), a: Math.round(me.a * 100) / 100, f: Math.round(me.fill), c: o.coat ? o.coat() : 0, s: bits };
+    const pres = { k: 'p', r: match.round, x: Math.round(me.x), y: Math.round(me.y), a: Math.round(me.a * 100) / 100, f: Math.round(me.fill), c: o.coat ? o.coat() : 0, o: outfitCode(), s: bits };
     if (w.authority) pres.b = w.hams.filter((h) => h.bot).map((h) => [Math.round(h.x), Math.round(h.y), Math.round(h.fill), (h.dashT > 0 || w.t - (h.lastDashT ?? -9) < 0.35 ? 1 : 0) | (h.dizzyT > 0 ? 4 : 0) | specialBits(h)]);
     room.setPresence(pres);
   }
@@ -817,10 +837,10 @@ export function createOnline(room, helpers, o = {}) {
       if (!h) return null;
       if (world.authority) {
         const s = h.stats;
-        return { heap: h.heap, pops: s.pops, golden: s.golden, bestTrip: s.bestTrip, popsByBump: mine.popsByBump, lastBankLeft: s.lastBank > 0 ? world.duration - s.lastBank : null, trips: s.trips, stuffed: s.stuffed, bursting: s.bursting, bestChain: s.bestChain, bestBank: s.bestBank, specials: s.specials };
+        return { heap: h.heap, pops: s.pops, golden: s.golden, bestTrip: s.bestTrip, popsByBump: mine.popsByBump, lastBankLeft: s.lastBank > 0 ? world.duration - s.lastBank : null, trips: s.trips, stuffed: s.stuffed, bursting: s.bursting, bestChain: s.bestChain, bestBank: s.bestBank, specials: s.specials, spice: s.spice | mine.spice, bumps: Math.max(s.bumps, mine.bumps), swatted: s.swatted };
       }
       const st = mine.st;
-      return { heap: hostHeap, pops: mine.pops, golden: mine.golden, bestTrip: mine.bestTrip, popsByBump: mine.popsByBump, lastBankLeft: mine.lastBank, trips: st[0] | 0, stuffed: st[4] | 0, bursting: st[5] | 0, bestChain: st[6] | 0, bestBank: st[7] | 0, specials: mine.specials };
+      return { heap: hostHeap, pops: mine.pops, golden: mine.golden, bestTrip: mine.bestTrip, popsByBump: mine.popsByBump, lastBankLeft: mine.lastBank, trips: st[0] | 0, stuffed: st[4] | 0, bursting: st[5] | 0, bestChain: st[6] | 0, bestBank: st[7] | 0, specials: mine.specials, spice: mine.spice, bumps: mine.bumps, swatted: h.stats.swatted };
     },
     /** The record's per-seat numbers (trips, pops, golden, best trip), for the round's reason line. */
     seatStats() {
@@ -900,6 +920,7 @@ export function createOnline(room, helpers, o = {}) {
           }
           for (const e of world.drain()) {
             if (e.k === 'bumpOut') {
+              if (e.by === myId()) mine.bumps++;
               sendBump(e);
               continue;
             }
@@ -907,7 +928,11 @@ export function createOnline(room, helpers, o = {}) {
               if (e.k === 'eat') dirty = true; // pieces gone: others must see it soon, or they bite it too
               record(e);
               if (e.k === 'pop' && e.by && e.by === myId()) mine.popsByBump++;
-              if (e.k === 'eat' && e.id === myId() && FOODS[e.type].special) mine.specials++;
+              if (e.k === 'hit' && e.by && e.by === myId()) mine.bumps++;
+              if (e.k === 'eat' && e.id === myId() && FOODS[e.type].special) {
+                mine.specials++;
+                mine.spice |= 1 << (e.type - CHILI);
+              }
               // Someone else's page shows their own sneeze; the host shows it here as it spills them.
               const sh = e.k === 'sneezeSpill' ? world.byId.get(e.id) : null;
               if (sh && sh.remote) out.push({ k: 'sneeze', id: sh.id, x: e.x, y: e.y, dx: Math.cos(sh.a), dy: Math.sin(sh.a), fromRecord: true });
@@ -932,7 +957,7 @@ export function createOnline(room, helpers, o = {}) {
       if (now - presenceAt < 45) return;
       presenceAt = now;
       if (!h) return;
-      room.setPresence({ k: 'l', x: Math.round(h.x), y: Math.round(h.y), a: Math.round(h.a * 100) / 100, f: Math.round(h.fill), c: o.coat ? o.coat() : 0, s: (h.dashT > 0 ? 1 : 0) | (h.dizzyT > 0 ? 4 : 0), h: heap | 0 });
+      room.setPresence({ k: 'l', x: Math.round(h.x), y: Math.round(h.y), a: Math.round(h.a * 100) / 100, f: Math.round(h.fill), c: o.coat ? o.coat() : 0, o: outfitCode(), s: (h.dashT > 0 ? 1 : 0) | (h.dizzyT > 0 ? 4 : 0), h: heap | 0 });
     },
     lobby() {
       const l = match.lobby;

@@ -1,25 +1,27 @@
 // More Than You Can Chew: the page. Joins the room first, then runs one of four worlds (the title's attract mode, the
-// lobby's practice blanket, a solo Picnic or Daily, or the online round) and draws it with its HUD and screens.
+// lobby's practice blanket, a solo Picnic or Daily, or the online round), draws it in 3D with the HUD over it, and keeps
+// the profile: XP, the wardrobe, stars, Daily goals and the streak.
 
-import { createRenderer } from './render.js';
+import { createWorld3d } from './render/world3d.js';
+import { U } from './render/stage.js';
 import { createHud } from './hud.js';
-import { createFx, drawScreenParts } from './fx.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createUi } from './ui.js';
-import { createStore, recordRound, coatUnlocked, coatCondition, picnicOpen, dayNumber, dailyArena, dailyScore, copyProfile, newCoats } from './profile.js';
+import { createStore, finishRound, coatUnlocked, coatCondition, picnicOpen, dayNumber, dailyArena, dailyScore, todaysGoals, liveStreak, earnedKeys } from './profile.js';
+import { HAT_LIST, POPS, TRAILS, levelOf, itemUnlocked, itemCondition, starCount, PICNIC_GOALS, PICNIC_SPECIALS, goalDef, BOT_OUTFITS, encodeOutfit, dressHam, CROWN_STARS } from './wardrobe.js';
 import { createLocalSession, attractBots } from './session.js';
 import { createOnline, JOIN, readSettings, readPresence } from './net.js';
-import { createBrain } from './brain.js';
-import { biscuitTexture } from './biscuit.js';
-import { ARENAS, arenaById } from './arenas.js';
-import { buildGround } from './ground.js';
-import { BOTS, LADDER_SKILL, DIFFICULTY, COATS, FOODS, GOLDEN, CAP, MAX, ROUND, POP } from './config.js';
+import { createBrain } from './sim/brain.js';
+import { ARENAS, arenaById } from './sim/arenas.js';
+import { BOTS, LADDER_SKILL, DIFFICULTY, COATS, FOODS, GOLDEN, CAP, MAX, ROUND, POP, TIERS } from './sim/config.js';
 
 const params = new URLSearchParams(location.search);
 async function importHelpers() {
   try {
-    const [m, h, b] = await Promise.all([import('/__onceworlds/v1/match.js'), import('/__onceworlds/v1/host.js'), import('/__onceworlds/v1/bots.js')]);
+    // The platform serves these next to the game (not part of the build).
+    const at = (name) => import(/* @vite-ignore */ `${location.origin}/__onceworlds/v1/${name}.js`);
+    const [m, h, b] = await Promise.all([at('match'), at('host'), at('bots')]);
     return { createMatch: m.createMatch, createHost: h.createHost, createBots: b.createBots, t: h.t };
   } catch {
     return null;
@@ -30,6 +32,7 @@ const withTimeout = (p, ms, fallback = null) => Promise.race([Promise.resolve(p)
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// Crumb colours per food type.
 const CRUMBS = [
   ['#2E2A29', '#E9E1D3'],
   ['#B5733A', '#E8B77A'],
@@ -38,9 +41,20 @@ const CRUMBS = [
   ['#E33A3A', '#FFD34D'],
   ['#C98A4B', '#4A2A18'],
   ['#FFC928', '#FFF6C2'],
+  ['#E8321E', '#5BA332'],
+  ['#FF7EC0', '#FFD1E8'],
+  ['#3B2A22', '#7A5A44'],
 ];
+const POP_STYLE = {
+  crumbs: { colors: ['#FF4D6D', '#FFF2D9', '#E3A24F', '#FFCB2E'], glow: '#fff2c0' },
+  confetti: { colors: ['#FF4D6D', '#3FA7F2', '#FFCB2E', '#2DC38A', '#9A5BEA'], glow: '#ffffff', confetti: true },
+  hearts: { colors: ['#FF6FB0', '#FF9AC8', '#FFD1E8', '#FF4D6D'], glow: '#ffb3d6', sparkle: '#ff6fb0' },
+  stars: { colors: ['#FFCB2E', '#FFE680', '#FFF6C2'], glow: '#ffe680', sparkle: '#ffe680' },
+  bubbles: { colors: ['#BFE8FF', '#FFFFFF', '#9AD8F7'], glow: '#d8f2ff', bubbles: true },
+  fireworks: { colors: ['#FF4D6D', '#FFCB2E', '#3FA7F2', '#9BD13A'], glow: '#ffffff', fireworks: true },
+};
 
-async function boot() {
+export async function boot() {
   const ow = window.onceworlds || null;
   const dev = !/onceworldsusercontent\.com$/.test(location.hostname);
   const autoplay = dev && params.get('autoplay') === '1';
@@ -50,17 +64,13 @@ async function boot() {
   const helpersP = importHelpers();
 
   const canvas = document.getElementById('game');
-  const fx = createFx();
-  const renderer = createRenderer(canvas, fx);
-  const hud = createHud(renderer);
-  const input = createInput(canvas, renderer, ow);
+  const hudCanvas = document.getElementById('hud');
+  const world = createWorld3d(canvas);
+  const fx = world.fx;
+  const hud = createHud(hudCanvas, world);
+  const input = createInput(canvas, world, ow);
   const audio = createAudio();
   const store = createStore(ow);
-  try {
-    document.documentElement.style.setProperty('--tex', `url(${biscuitTexture(192).toDataURL()})`);
-  } catch {
-    /* the plain biscuit colour still works */
-  }
   try {
     if (ow && ow.ui && ow.ui.setLook) ow.ui.setLook({ accent: '#FFCB2E', panel: '#3B2218', text: '#FFF2D9' });
   } catch {
@@ -83,23 +93,27 @@ async function boot() {
     hint: null,
     big: null,
     phaseSeen: '',
-    roundSeen: '',
     endSeen: '',
     watch: null,
     ateAt: 0,
-    lastT: 0,
     daily: { top: [], rank: null },
     matchPops: 0,
     matchLines: [],
+    matchSummary: null,
     pick: 0,
+    tab: 'hat',
     camTarget: null,
     lastSec: -1,
     autoBrain: null,
     netEvents: [],
+    slow: 0,
+    stop: 0,
+    endFocus: null,
   };
   const P = () => store.p;
+  let reduced = false;
 
-  // ------------------------------------------------------------------ sizing, reserved areas
+  // ------------------------------------------------------------------ sizing, quality, reserved areas
 
   let reserved = null;
   const pixelRatio = () => {
@@ -113,10 +127,17 @@ async function boot() {
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    renderer.resize(w, h, pixelRatio());
+    const r = pixelRatio();
+    world.resize(w, h, r);
+    hud.resize(w, h, Math.min(2, r));
     document.body.classList.toggle('portrait', h > w * 1.1 && w < 700);
     document.body.classList.toggle('short', h < 560);
   }
+  const quality = () => {
+    const q = params.get('q') || (ow && ow.settings && ow.settings.quality) || 'high';
+    return ['low', 'medium', 'high'].includes(q) ? q : 'high';
+  };
+  world.setQuality(quality());
   resize();
   window.addEventListener('resize', resize);
   try {
@@ -125,9 +146,12 @@ async function boot() {
       ow.on('reserved', (r) => (reserved = r));
     }
     if (ow && ow.settings && ow.settings.on) {
-      fx.setReduced(!!ow.settings.reducedMotion);
+      reduced = !!ow.settings.reducedMotion;
+      world.setReduced(reduced);
       ow.settings.on('change', (s) => {
-        fx.setReduced(!!(s && s.reducedMotion));
+        reduced = !!(s && s.reducedMotion);
+        world.setReduced(reduced);
+        world.setQuality(quality());
         resize();
       });
     }
@@ -135,8 +159,7 @@ async function boot() {
     /* outside the platform */
   }
   const reservedList = () => (Array.isArray(reserved) ? reserved : [{ kind: 'menu', x: 0, y: 0, w: 150, h: 70 }]);
-  /** The lobby card's width (style.css), and how high it can sit when its left edge is at `left`. */
-  const cardWidth = () => (document.body.classList.contains('short') ? Math.min(620, renderer.vw - 170) : 350);
+  const cardWidth = () => (document.body.classList.contains('short') ? Math.min(620, world.vw - 170) : 360);
   const clearTop = (left) => {
     let t = 12;
     for (const r of reservedList()) if (r.x + r.w > left && r.y < 140) t = Math.max(t, r.y + r.h + 10);
@@ -148,13 +171,23 @@ async function boot() {
     return b;
   };
 
+  // ------------------------------------------------------------------ what everyone wears
+
+  const myOutfit = () => ({ hat: P().hat, pop: P().pop, trail: P().trail });
+  function dress(w) {
+    for (const h of w.hams) {
+      if (h.id === 'me') dressHam(h, myOutfit());
+      else if (h.bot) dressHam(h, BOT_OUTFITS[String(h.name).replace(/ \d+$/, '')]);
+    }
+  }
+
   // ------------------------------------------------------------------ the screens
 
-  const ui = createUi(document.getElementById('ui'), {
+  const handlers = {
     press: (act) => {
       audio.unlock();
       if (act === 'noop' || act === 'closeSheet') return;
-      audio.play(act === 'arena' || act === 'coat' || act === 'rounds' || act === 'bots' || act === 'plate' ? 'soft' : 'crunch');
+      audio.play(['arena', 'rounds', 'bots', 'plate', 'tab', 'wear'].includes(act) ? 'soft' : 'crunch');
     },
     play: () => play(),
     arena: (d) => {
@@ -167,15 +200,6 @@ async function boot() {
     },
     rounds: (n) => (S.net ? S.net.setSetting('rounds', Number(n)) : (localSettings.rounds = Number(n))),
     bots: (b) => (S.net ? S.net.setSetting('bots', b) : (localSettings.bots = b)),
-    coat: (d) => {
-      // Browse every coat; wear the ones you've earned.
-      const p = P();
-      S.pick = (S.pick + Number(d) + COATS.length) % COATS.length;
-      if (coatUnlocked(p, S.pick)) {
-        p.coat = S.pick;
-        store.save();
-      }
-    },
     sheet: (name) => (S.sheet = name),
     closeSheet: () => (S.sheet = null),
     invite: () => {
@@ -185,6 +209,12 @@ async function boot() {
         /* outside the platform */
       }
     },
+    wardrobe: () => {
+      S.screen = 'wardrobe';
+      S.sheet = null;
+    },
+    tab: (t) => (S.tab = t),
+    wear: (arg) => wear(arg),
     picnics: () => {
       S.screen = 'picnics';
       S.plate = firstOpenPlate();
@@ -208,9 +238,50 @@ async function boot() {
       backToLobby();
     },
     rejoin: () => rejoin(),
-  });
+  };
+  const ui = createUi(document.getElementById('ui'), handlers);
+  // Local testing: poke at the page from the console.
+  if (dev) {
+    window.__chew = {
+      S,
+      handlers,
+      store,
+      world,
+      startSolo: (i) => startSolo(i),
+      auto: (w, me) => {
+        if (!S.autoBrain || S.autoBrain.w !== w) S.autoBrain = { w, b: createBrain(me, w, { skill: 0.9, kind: 'plain', seed: 'auto' }) };
+        return S.autoBrain.b.think(w, me, 1 / 60) || { mx: 0, my: 0, dash: false };
+      },
+    };
+  }
   const localSettings = { arena: 0, rounds: 1, bots: 'normal' };
   const settings = () => (S.net ? S.net.settings() : readSettings(localSettings));
+
+  function wear(arg) {
+    const [kind, id] = String(arg).split(':');
+    const p = P();
+    if (kind === 'coat') {
+      const i = Number(id);
+      if (!coatUnlocked(p, i)) return;
+      p.coat = i;
+      S.pick = i;
+    } else if (kind === 'hat') {
+      if (id && !itemUnlocked(p, 'hat', id)) return;
+      p.hat = id || '';
+    } else if (kind === 'pop') {
+      if (!itemUnlocked(p, 'pop', id)) return;
+      p.pop = id;
+      // Show it off.
+      const me = S.practice && S.practice.w.byId.get('me');
+      if (me) popBurst(me, id, true);
+    } else if (kind === 'trail') {
+      if (!itemUnlocked(p, 'trail', id)) return;
+      p.trail = id;
+    }
+    store.save();
+    if (S.practice) dress(S.practice.w);
+    world.happy('me');
+  }
 
   // ------------------------------------------------------------------ the room
 
@@ -220,7 +291,7 @@ async function boot() {
     if (!r || !helpers) return;
     room = r;
     try {
-      S.net = createOnline(room, helpers, { coat: () => P().coat, now: () => performance.now(), onEvent: (e) => S.netEvents.push(e) });
+      S.net = createOnline(room, helpers, { coat: () => P().coat, outfit: () => encodeOutfit(myOutfit()), now: () => performance.now(), onEvent: (e) => S.netEvents.push(e) });
     } catch (e) {
       console.error('[chew] online failed', e);
       S.net = null;
@@ -244,7 +315,7 @@ async function boot() {
       }
       store.save();
       audio.play('fanfare');
-      fx.confetti(0, 0, renderer.vw, 140);
+      hud.confetti(160, reduced);
     });
   }
   connect();
@@ -260,26 +331,35 @@ async function boot() {
   withTimeout(Promise.all([document.fonts.load('40px Shrikhand'), document.fonts.load('800 20px "Bricolage Grotesque"')]), 2000);
   store.load().then(() => {
     S.pick = P().coat;
+    // What a player had before the wardrobe existed counts as seen (only fresh unlocks say "New!").
+    if (!P().seen.length) {
+      P().seen = earnedKeys(P());
+      store.save();
+    }
   });
 
   let attractRound = 0;
   function newAttract() {
     attractRound++;
     S.attract = createLocalSession({ arena: 0, seed: `title:${attractRound}`, bots: attractBots(), intro: 0, duration: 75 });
+    dress(S.attract.w);
     // Start a little in: food already strewn, a toss on its way.
     for (let i = 0; i < 60 * 3; i++) S.attract.step(1 / 60);
     S.attract.w.drain();
   }
   newAttract();
 
-  const titleView = () => ({ best: P().bests.round > 0 ? fmt(P().bests.round) : '', keys: !(ow && ow.controls && ow.controls.touch) });
+  const titleView = () => {
+    const p = P();
+    return { best: p.bests.round > 0 ? fmt(p.bests.round) : '', keys: !(ow && ow.controls && ow.controls.touch), level: levelOf(p.xp).level, streak: liveStreak(p, today()) };
+  };
 
   function play() {
     audio.unlock();
     audio.music('menu');
     S.screen = 'lobby';
     S.pick = P().coat;
-    renderer.cam.ready = false;
+    world.camReady = false;
     // In a public server, Play is your Ready (a lone player starts at once).
     if (S.net && room && room.kind === 'public' && room.match.phase === 'lobby') S.net.ready(true);
   }
@@ -291,6 +371,7 @@ async function boot() {
       audio.play('crunch');
       play();
     } else if (e.code === 'Escape' && S.sheet) S.sheet = null;
+    else if (e.code === 'Escape' && S.screen === 'wardrobe') backToLobby();
     else if (e.code === 'Escape' && S.solo && S.screen === 'solo' && S.solo.phase !== 'end') setPaused(!S.paused);
     else if (S.watch !== null && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) cycleWatch(e.code === 'ArrowLeft' ? -1 : 1);
   });
@@ -325,11 +406,13 @@ async function boot() {
     let arena;
     let seed;
     let skill;
+    let specials;
     if (info.kind === 'picnic') {
       if (!picnicOpen(p, info.n)) return;
       arena = info.n;
       seed = `picnic:${info.n}:${Math.floor(Math.random() * 1e9)}`;
       skill = LADDER_SKILL[info.n];
+      specials = PICNIC_SPECIALS[info.n];
     } else if (info.kind === 'daily') {
       const day = today();
       arena = dailyArena(day);
@@ -341,16 +424,18 @@ async function boot() {
       seed = `quick:${Math.floor(Math.random() * 1e9)}`;
       skill = DIFFICULTY[settings().bots] ?? 0.5;
     }
-    const bots = BOTS.slice(0, 7).map((b, i) => ({ name: b.name, kind: b.kind, coat: b.coat, skill: clamp(skill + (i % 3 - 1) * 0.04, 0, 1) }));
-    S.solo = createLocalSession({ arena, seed, me: { id: 'me', name: 'You', coat: p.coat }, bots });
+    const bots = BOTS.slice(0, 7).map((b, i) => ({ name: b.name, kind: b.kind, coat: b.coat, skill: clamp(skill + ((i % 3) - 1) * 0.04, 0, 1) }));
+    S.solo = createLocalSession({ arena, seed, me: { id: 'me', name: 'You', coat: p.coat }, bots, specials });
+    dress(S.solo.w);
     S.soloInfo = info;
     S.soloResult = null;
     S.screen = 'solo';
     S.sheet = null;
     S.matchPops = 0;
-    fx.clear();
-    renderer.resetAnims();
-    renderer.cam.ready = false;
+    S.endFocus = null;
+    hud.clear();
+    world.resetAnims();
+    world.camReady = false;
     audio.music('play');
     S.autoBrain = null;
   }
@@ -369,7 +454,8 @@ async function boot() {
     S.screen = 'lobby';
     S.sheet = null;
     S.big = null;
-    renderer.cam.ready = false;
+    world.camReady = false;
+    world.mood('me', null);
     audio.music('menu');
     audio.strain(0);
   }
@@ -396,6 +482,30 @@ async function boot() {
     } else audio.suspend(false);
   });
 
+  /** My numbers for a finished round (solo). */
+  function myRound(w, me, place) {
+    const s = me.stats;
+    return {
+      heap: me.heap,
+      trips: s.trips,
+      pops: s.pops,
+      popsByBump: s.bullied,
+      golden: s.golden,
+      bestTrip: s.bestTrip,
+      lastBankLeft: s.lastBank > 0 ? w.duration - s.lastBank : null,
+      stuffed: s.stuffed,
+      bursting: s.bursting,
+      bestChain: s.bestChain,
+      bestBank: s.bestBank,
+      specials: s.specials,
+      spice: s.spice,
+      bumps: s.bumps,
+      swatted: s.swatted,
+      place,
+      players: w.hams.length,
+    };
+  }
+
   function finishSolo() {
     const s = S.solo;
     const w = s.w;
@@ -404,54 +514,70 @@ async function boot() {
     const mine = st.find((r) => r.id === 'me');
     const place = mine ? mine.place : 8;
     const p = P();
-    const before = copyProfile(p);
-    const rec = recordRound(p, { heap: me.heap, pops: me.stats.pops, popsByBump: me.stats.bullied, golden: me.stats.golden, bestTrip: me.stats.bestTrip, lastBankLeft: me.stats.lastBank > 0 ? w.duration - me.stats.lastBank : null });
-    const lines = [{ text: `Your heap ${fmt(me.heap)}` }, ...rec.lines];
     const info = S.soloInfo;
-    let canNext = false;
-    if (info.kind === 'picnic') {
-      if (me.heap > p.picnics.best[info.n]) p.picnics.best[info.n] = me.heap;
-      if (place === 1) {
-        const first = !p.picnics.won[info.n];
-        p.picnics.won[info.n] = true;
-        if (first && info.n < 7) lines.push({ text: `${ARENAS[info.n + 1].name} is open!`, best: true });
-        if (p.picnics.won.every(Boolean)) rec.badges.push('picnic-season');
-      }
-      canNext = info.n < 7 && picnicOpen(p, info.n + 1);
-    } else if (info.kind === 'daily') {
-      rec.badges.push('daily-crumbs');
-      if (p.daily.day !== info.day) p.daily = { day: info.day, best: 0 };
-      if (me.heap > p.daily.best) {
-        p.daily.best = me.heap;
-        store.submit('daily', dailyScore(info.day, me.heap)).then((r) => (S.daily.rank = r && r.rank ? r.rank : S.daily.rank));
-      }
+    const sum = finishRound(p, myRound(w, me, place), { mode: info.kind, n: info.n, day: today() });
+    if (info.kind === 'daily') {
+      store.submit('daily', dailyScore(info.day, me.heap)).then((r) => (S.daily.rank = r && r.rank ? r.rank : S.daily.rank));
+      store.submit('streak', p.daily.bestStreak);
     }
-    // A solo win counts like a match won.
-    p.totals.matches++;
-    if (place === 1) {
-      p.totals.wins++;
-      store.submit('wins', p.totals.wins);
-      if (me.stats.pops === 0) rec.badges.push('clean-plate');
-    }
-    for (const c of newCoats(before, p)) lines.push({ text: `New coat: ${COATS[c].name}`, best: true });
-    for (const b of rec.badges) store.award(b);
+    if (place === 1) store.submit('wins', p.totals.wins);
+    for (const b of sum.badges) store.award(b);
     store.submit('best-round', me.heap);
+    store.submit('level', levelOf(p.xp).level);
     store.save();
+    const canNext = info.kind === 'picnic' && info.n < 7 && picnicOpen(p, info.n + 1);
     S.soloResult = {
       place,
       podium: st.slice(0, 3).map((r) => {
         const h = w.byId.get(r.id);
-        return { name: r.id === 'me' ? 'You' : r.name, coat: h.coat, seat: h.seat, total: fmt(r.heap), place: r.place };
+        return { name: r.id === 'me' ? 'You' : r.name, coat: h.coat, seat: h.seat, hat: h.hat, total: fmt(r.heap), place: r.place, me: r.id === 'me' };
       }),
-      lines,
+      heap: fmt(me.heap),
+      lines: sum.lines,
       canNext,
+      summary: progressView(sum),
+      title: info.kind === 'picnic' ? `Picnic ${info.n + 1}` : info.kind === 'daily' ? 'Daily Feast' : arenaById(w.arena.id).name,
     };
     S.screen = 'soloResults';
     if (place === 1) {
       audio.play('fanfare');
-      fx.confetti(0, 0, renderer.vw, 160);
+      hud.confetti(160, reduced);
     }
+    progSounds(S.soloResult.summary);
     audio.music('menu');
+  }
+
+  /** The results card's beats, heard: XP ticks, the level-up, new stars (timed like the card's animations). */
+  function progSounds(s) {
+    const later = (sec, f) => setTimeout(f, sec * 1000);
+    let t = 0.6;
+    s.xp.forEach((l, i) => {
+      t += 0.13;
+      later(t, () => audio.play('xp', { i }));
+    });
+    t += 1.3;
+    if (s.to.level > s.from.level) {
+      later(t, () => audio.play('levelup'));
+      t += 0.35;
+    }
+    if (s.rewards.length) t += s.rewards.length * 0.18 + 0.2;
+    if (s.stars) s.stars.fresh.forEach((f, k) => f && later(t + k * 0.22, () => audio.play('star', { i: k })));
+  }
+
+  /** The progress part of a results screen. */
+  function progressView(sum) {
+    return {
+      xp: sum.xp.map((l) => ({ text: l.text, xp: l.xp })),
+      xpTotal: sum.xpTotal,
+      from: { level: sum.before.level, f: sum.before.into / sum.before.need },
+      to: { level: sum.after.level, f: sum.after.into / sum.after.need, into: sum.after.into, need: sum.after.need },
+      rewards: sum.rewards,
+      stars: sum.stars,
+      have: sum.stars ? P().picnics.stars[sum.stars.n].slice() : null,
+      starText: sum.stars ? ['Win', `Bank ${fmt(PICNIC_GOALS[sum.stars.n].heap)}`, PICNIC_GOALS[sum.stars.n].text] : null,
+      goals: sum.goals,
+      streak: sum.streak,
+    };
   }
 
   // ------------------------------------------------------------------ the lobby's practice blanket
@@ -488,6 +614,7 @@ async function boot() {
       practice: true,
       intro: 0,
     });
+    dress(S.practice.w);
     S.practiceKey = key;
     if (old && sameArena) {
       const me = S.practice.w.byId.get('me');
@@ -502,8 +629,8 @@ async function boot() {
   // ------------------------------------------------------------------ juice
 
   const onScreen = (x, y, m = 80) => {
-    const p = renderer.toScreen(x, y);
-    return p.x > -m && p.y > -m && p.x < renderer.vw + m && p.y < renderer.vh + m;
+    const p = world.toScreen(x, y, 0);
+    return !p.behind && p.x > -m && p.y > -m && p.x < world.vw + m && p.y < world.vh + m;
   };
 
   function showHint(key, text, opts = {}) {
@@ -515,34 +642,114 @@ async function boot() {
     S.hint = { text, age: 0, life: opts.life || 2.6, hot: !!opts.hot };
   }
 
+  const hitStop = (sec) => {
+    if (!reduced) S.stop = Math.max(S.stop, sec);
+  };
+  const slowMo = (sec) => {
+    if (!reduced) S.slow = Math.max(S.slow, sec);
+  };
+
+  /** A pop's burst in the hamster's chosen style. `show`: a wardrobe preview. */
+  function popBurst(h, style, show = false) {
+    const st = POP_STYLE[style] || POP_STYLE.crumbs;
+    const x = h.x * U;
+    const z = h.y * U;
+    fx.ring(x, z, 1.5, '#fff2d9');
+    fx.flare(x, 0.35, z, 1.4, st.glow, 0.25);
+    fx.crumbs(x, 0.35, z, 26, st.colors, 2.6, 1.1, 0.035);
+    if (st.confetti) fx.confetti(x, 0.4, z, 40, 1.4, st.colors);
+    if (st.sparkle) fx.sparkle(x, 0.4, z, 24, st.sparkle, 1.2, 0.18);
+    if (st.bubbles) for (let i = 0; i < 12; i++) fx.steam(x + (Math.random() - 0.5) * 0.6, 0.2, z + (Math.random() - 0.5) * 0.6, 1, '#d8f2ff', 0.12);
+    if (st.fireworks) {
+      fx.sparkle(x, 0.6, z, 30, '#ffcb2e', 1.6, 0.16);
+      fx.sparkle(x, 0.6, z, 20, '#3fa7f2', 1.4, 0.14);
+      fx.sparkle(x, 0.6, z, 20, '#ff4d6d', 1.5, 0.14);
+    }
+    fx.dust(x, z, 10, 0.3);
+    if (show) audio.play('pop');
+  }
+
   function juice(e, w, meId) {
     const h = w.byId.get(e.id);
     const mine = !!meId && e.id === meId;
     const near = h ? onScreen(h.x, h.y) : false;
     switch (e.k) {
       case 'eat': {
-        const size = FOODS[e.type].size;
-        renderer.gulp(e.id, size);
-        if (near) fx.crumbs(e.x, e.y, 3 + Math.min(6, Math.round(size / 5)), CRUMBS[e.type] || CRUMBS[0], 80, 0.5);
+        const def = FOODS[e.type];
+        world.gulp(e.id, def.size);
+        if (near) fx.crumbs(e.x * U, 0.1, e.y * U, 3 + Math.min(6, Math.round(def.size / 5)), CRUMBS[e.type] || CRUMBS[0], 0.9, 0.5, 0.022);
         if (mine) {
-          audio.play('munch', { size, fill: e.fill });
+          audio.play('munch', { size: def.size, fill: e.fill, chain: e.chain || 0 });
           S.ateAt = w.t;
-          if (e.type === GOLDEN) fx.text(e.x, e.y - 24, '+60', '#FFCB2E', 34);
+          if (e.type === GOLDEN) {
+            hud.float(e.x, e.y, 0.5, '+60', '#FFCB2E', 34);
+            fx.sparkle(e.x * U, 0.3, e.y * U, 16, '#fff2a8', 0.8);
+          }
+          const c = e.chain || 0;
+          if (c >= 3 && (c === 3 || c === 5 || c >= 8)) {
+            hud.float(e.x, e.y, 0.7, `Gobble ×${c}!`, '#2DC38A', 24 + Math.min(10, c), 0.9);
+            fx.sparkle(e.x * U, 0.4, e.y * U, 6 + c, '#bfffd0', 0.5, 0.1);
+            if (c === 3) showHint('chain', 'Gobble chains add up!');
+          }
+          if (e.fill > TIERS[1].at && e.fill - def.size <= TIERS[1].at) {
+            audio.play('tier', { n: 1 });
+            showHint('stuffed', 'Stuffed! Bank it for ×2', { force: true });
+          } else if (e.fill > TIERS[0].at && e.fill - def.size <= TIERS[0].at) {
+            audio.play('tier', { n: 2 });
+            showHint('bursting', 'Bursting! ×3 if you get home', { force: true, hot: true });
+          }
         }
         break;
       }
-      case 'pop': {
-        if (h) fx.stars(h, POP.dizzy);
-        renderer.squash(e.id, 0.55);
+      case 'hot':
         if (near || mine) {
-          fx.ring(e.x, e.y, 140, '#FFF2D9');
-          fx.crumbs(e.x, e.y, 24, ['#FF4D6D', '#FFF2D9', '#E3A24F', '#FFCB2E'], 280, 1.2);
-          fx.dust(e.x, e.y, 10, 16);
-          audio.play('pop');
-          fx.shake(mine ? 0.75 : 0.35);
-          fx.hitStop(0.09);
+          fx.steam(e.x * U, 0.4, e.y * U, 8, '#ffb070', 0.18);
+          fx.sparkle(e.x * U, 0.4, e.y * U, 10, '#ff8a2a', 0.6);
+          hud.float(e.x, e.y, 0.7, 'HOT!', '#FF5A2A', mine ? 34 : 24, 0.9);
         }
-        fx.text(e.x, e.y - 44, 'POP!', mine ? '#FF4D6D' : '#FFF2D9', mine ? 46 : 32, 1.3);
+        if (mine) {
+          audio.play('sizzle');
+          showHint('chili', 'Chili: full speed!', { force: true });
+        }
+        break;
+      case 'gum':
+        if (near || mine) {
+          fx.ring(e.x * U, e.y * U, 0.8, '#ff7ec0');
+          hud.float(e.x, e.y, 0.7, 'Bubble!', '#FF7EC0', mine ? 32 : 22, 0.9);
+        }
+        if (mine) {
+          audio.play('gum');
+          showHint('gum', 'Bumps bounce off you', { force: true });
+        }
+        break;
+      case 'tickle':
+        if (mine) {
+          hud.float(e.x, e.y, 0.7, 'Uh oh…', '#E8C9A0', 28, 0.9);
+          audio.play('tickle');
+          showHint('pepper', 'Peppercorn: you sneeze!', { force: true, hot: true });
+        }
+        break;
+      case 'sneeze': {
+        if (h && (near || mine)) {
+          fx.spray(h.x * U + (e.dx || 0) * 0.25, 0.35, h.y * U + (e.dy || 0) * 0.25, e.dx || 1, e.dy || 0, 22);
+          hud.float(h.x, h.y, 0.8, 'ACHOO!', '#FFFFFF', mine ? 34 : 24, 0.9);
+          world.squash(e.id, -0.4);
+        }
+        if (mine || near) audio.play('sneeze');
+        if (mine) world.rig.kick(0.3, -(e.dx || 0), -(e.dy || 0));
+        break;
+      }
+      case 'pop': {
+        if (h) fx.stars(world.hamTop(h.id), POP.dizzy);
+        world.pop(e.id);
+        if (near || mine) {
+          popBurst(h || e, (h && h.pop) || 'crumbs');
+          audio.play('pop');
+          world.rig.kick(mine ? 0.85 : 0.35);
+          hitStop(mine ? 0.12 : 0.06);
+          if (mine) world.rig.punchIn(0.12);
+        }
+        hud.float(e.x, e.y, 0.8, 'POP!', mine ? '#FF4D6D' : '#FFF2D9', mine ? 48 : 30, 1.3);
         if (mine) {
           S.matchPops++;
           const p = P();
@@ -556,37 +763,65 @@ async function boot() {
         break;
       }
       case 'bank': {
-        renderer.happy(e.id, 1);
+        world.happy(e.id);
         if (h) {
-          const hs = renderer.heapSpot(h.burrow);
+          world.bankFlight(h, e.counts, e.worth);
+          const hs = world.heapSpot(h);
+          const tier = e.tier ? TIERS.find((t) => t.key === e.tier) : null;
           if (near || mine) {
-            fx.text(hs.x + 10, hs.y - 70, `+${e.worth}`, '#FFCB2E', mine ? 42 : 28, 1.3);
-            fx.crumbs(hs.x, hs.y - 6, 10, ['#E3A24F', '#FFF2D9', '#FFCB2E'], 70, 1);
+            const sub = tier ? `${tier.name} ×${tier.mult}!` : e.bonus > 0 ? `+${e.bonus} gobble` : '';
+            hud.float(hs.x, hs.y, 1.0, `+${e.worth}`, tier ? (tier.key === 'bursting' ? '#FF4D6D' : '#FF8A2A') : '#FFCB2E', mine ? (tier ? 50 : 40) : 26, tier ? 1.7 : 1.3, sub);
+            fx.sparkle(hs.x * U, 0.3, hs.y * U, tier ? 30 : 10, tier ? '#ffe680' : '#fff2c0', tier ? 1.2 : 0.6);
+            if (tier) {
+              fx.confetti(hs.x * U, 0.5, hs.y * U, tier.key === 'bursting' ? 60 : 30, 1.4);
+              fx.ring(hs.x * U, hs.y * U, 2.2, tier.key === 'bursting' ? '#ff4d6d' : '#ffcb2e', 0.6);
+            }
+          }
+          if (mine && tier) {
+            world.rig.punchIn(tier.key === 'bursting' ? 0.22 : 0.14);
+            if (tier.key === 'bursting') {
+              slowMo(0.55);
+              S.big = { kind: 'word', text: 'BURSTING!', t: 0, life: 1.2, color: '#FF4D6D' };
+            }
           }
         }
         if (mine) {
           const n = e.counts ? e.counts.reduce((a, b) => a + b, 0) : Math.ceil(e.worth / 6);
-          audio.play('bank', { n, worth: e.worth, fill: e.fill });
+          audio.play('bank', { n, worth: e.worth, fill: e.fill, tier: e.tier ? (e.tier === 'bursting' ? 2 : 1) : 0 });
         }
         break;
       }
       case 'hit': {
-        renderer.squash(e.id, 0.45);
+        world.squash(e.id, 0.45);
+        world.hit(e.id);
         if (near || mine) {
-          fx.dust(e.x, e.y, 8, 12);
+          fx.dust(e.x * U, e.y * U, 8, 0.22);
+          fx.flare(e.x * U, 0.3, e.y * U, 0.8, '#ffffff', 0.12);
           audio.play(e.kind === 'paw' ? 'swat' : 'hit');
-          fx.hitStop(0.05);
-          fx.shake(mine ? 0.42 : 0.15);
+          hitStop(0.06);
+          world.rig.kick(mine ? 0.5 : 0.18, e.dx || 0, e.dy || 0);
+        }
+        if (e.by && e.by === meId) {
+          hitStop(0.05);
+          world.rig.kick(0.25, e.dx || 0, e.dy || 0);
         }
         break;
       }
+      case 'boing':
+        if (near || mine) {
+          fx.ring(e.x * U, e.y * U, 1.0, '#ff7ec0', 0.35);
+          hud.float(e.x, e.y, 0.7, 'Boing!', '#FF7EC0', 26, 0.8);
+          audio.play('boing');
+        }
+        break;
       case 'dash':
-        renderer.squash(e.id, -0.25);
-        if (near) fx.dust(e.x, e.y, 4, 8);
+        world.squash(e.id, -0.3);
+        if (near) fx.dust(e.x * U, e.y * U, 5, 0.16);
+        if (h && h.trailFx && h.trailFx !== 'dust' && near) trailBurst(h, 8);
         if (mine || near) audio.play('dash');
         break;
       case 'lost':
-        if (near || mine) fx.text(e.x, e.y - 34, `-${e.worth}`, '#C9BFB6', mine ? 38 : 26, 1.6);
+        if (near || mine) hud.float(e.x, e.y, 0.6, `-${e.worth}`, '#C9BFB6', mine ? 36 : 24, 1.5);
         if (mine) audio.play('lost');
         break;
       case 'end':
@@ -597,6 +832,44 @@ async function boot() {
     }
   }
 
+  function trailBurst(h, n) {
+    const x = h.x * U;
+    const z = h.y * U;
+    switch (h.trailFx) {
+      case 'sparkle':
+        fx.sparkle(x, 0.2, z, n, '#fff2a8', 0.4, 0.1);
+        break;
+      case 'petals':
+        fx.confetti(x, 0.3, z, n, 0.6, ['#ffb3d0', '#ff8fb8', '#fff0f5']);
+        break;
+      case 'bubbles':
+        fx.steam(x, 0.15, z, n, '#d8f2ff', 0.08);
+        break;
+      case 'flames':
+        fx.sparkle(x, 0.15, z, n, '#ff8a2a', 0.3, 0.14);
+        break;
+      case 'rainbow':
+        for (const c of ['#ff4d6d', '#ffcb2e', '#2dc38a', '#3fa7f2', '#9a5bea']) fx.sparkle(x, 0.2, z, Math.ceil(n / 4), c, 0.4, 0.1);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Every hamster's trail as it runs (its cosmetic, a few particles a second). */
+  const trailAcc = new Map();
+  function trails(w, dt) {
+    for (const h of w.hams) {
+      if (h.gone || !h.trailFx || h.trailFx === 'dust') continue;
+      if ((h.speed || 0) < 120) continue;
+      const a = (trailAcc.get(h.id) || 0) + dt * 9;
+      if (a >= 1) {
+        if (onScreen(h.x, h.y, 20)) trailBurst(h, 1);
+        trailAcc.set(h.id, 0);
+      } else trailAcc.set(h.id, a);
+    }
+  }
+
   /** Things that happen on the schedule's clock: the hand, a golden seed's light, the cat. */
   function scheduleBeats(w, t0, t1, meId) {
     if (t1 <= t0) return;
@@ -604,13 +877,20 @@ async function boot() {
       if (ts.at > t0 && ts.at <= t1 && onScreen(ts.x, ts.y, 200)) audio.play('toss');
       if (ts.land > t0 && ts.land <= t1 && onScreen(ts.x, ts.y, 100)) {
         audio.play('land');
-        fx.dust(ts.x, ts.y, 6, 18);
+        fx.dust(ts.x * U, ts.y * U, 7, 0.3);
       }
     }
     for (const g of w.sched.goldens) {
       if (g.at > t0 && g.at <= t1) {
         audio.play('golden');
         if (meId) showHint('golden', 'Golden seed!');
+      }
+      if (g.land > t0 && g.land <= t1 && onScreen(g.x, g.y, 100)) fx.sparkle(g.x * U, 0.2, g.y * U, 20, '#fff2a8', 0.9);
+    }
+    for (const d of w.sched.drops || []) {
+      if (d.land > t0 && d.land <= t1 && onScreen(d.x, d.y, 100)) {
+        fx.dust(d.x * U, d.y * U, 5, 0.22);
+        audio.play('land');
       }
     }
     const first = w.sched.sweeps[0];
@@ -624,7 +904,7 @@ async function boot() {
       }
       if (s.swat > t0 && s.swat <= t1 && onScreen(s.px, s.py, 400)) {
         audio.play('swat');
-        fx.shake(0.25);
+        world.rig.kick(0.3, s.dx, s.dy);
       }
     }
     if (w.t >= w.duration - 30 && t0 < w.duration - 30 && t1 >= w.duration - 30) audio.music('late');
@@ -635,7 +915,7 @@ async function boot() {
     const t = w.t;
     if (t > 3.5 && S.ateAt === 0 && me.fill === 0 && me.heap === 0) showHint('eat', 'Run over food');
     if (me.fill >= 70 && me.fill <= CAP) showHint('home', 'Full? Go home!');
-    if (me.fill > CAP) showHint('over', 'Too full! Dodge food', { hot: true });
+    if (me.fill > CAP + 5 && P().hints.stuffed) showHint('over', 'Big bites can pop you', { hot: true });
     if (t > 30 && me.dashCd <= 0 && me.dizzyT <= 0) {
       for (const g of w.hams) {
         if (g === me || g.away || g.gone || g.fill < 60) continue;
@@ -667,7 +947,7 @@ async function boot() {
 
   function seatRow(seat, w, i) {
     const h = w ? w.byId.get(seat.id) : null;
-    return { coat: h ? h.coat : 0, seat: h ? h.seat : i };
+    return { coat: h ? h.coat : 0, seat: h ? h.seat : i, hat: h ? h.hat : '' };
   }
 
   function reasonLine(w, ranked) {
@@ -676,6 +956,7 @@ async function boot() {
     let popper = null;
     for (const h of w.hams) if (!popper || h.stats.pops > popper.stats.pops) popper = h;
     const name = (h) => (h.id === S.net?.me ? 'You' : h.name);
+    if (win && win.stats.bursting > 0) return `${name(win)} banked ${win.stats.bursting} Bursting cheekful${win.stats.bursting > 1 ? 's' : ''}`;
     if (popper && popper.stats.pops >= 3 && popper !== win) return `${name(popper)} popped ${popper.stats.pops} times`;
     if (win && win.stats.pops === 0 && win.stats.trips > 0) return `${name(win)}: ${win.stats.trips} trips, never popped`;
     if (popper && popper.stats.pops >= 2) return `${name(popper)} popped ${popper.stats.pops} times`;
@@ -689,13 +970,16 @@ async function boot() {
     S.endSeen = key;
     const r = net.roundStats();
     if (!r) return;
+    const w = net.world;
+    const st = w ? w.standings() : [];
+    const mine = st.find((x) => x.id === net.me);
     const p = P();
-    const before = copyProfile(p);
-    const rec = recordRound(p, r);
-    for (const b of rec.badges) store.award(b);
+    const sum = finishRound(p, { ...r, place: mine ? mine.place : 8, players: w ? w.hams.length : 8 }, { mode: 'match', day: today() });
+    for (const b of sum.badges) store.award(b);
     store.submit('best-round', r.heap);
-    S.matchLines.push(...rec.lines);
-    for (const c of newCoats(before, p)) S.matchLines.push({ text: `New coat: ${COATS[c].name}`, best: true });
+    store.submit('level', levelOf(p.xp).level);
+    S.matchLines.push(...sum.lines);
+    S.matchSummary = progressView(sum);
     store.save();
   }
 
@@ -734,11 +1018,33 @@ async function boot() {
   /** The platform's Ready strip: off where Ready makes no sense (the title, Picnics, the Daily, a solo round). */
   function syncStrip() {
     if (!room || !room.match) return;
-    const hide = S.screen === 'title' || S.screen === 'picnics' || S.screen === 'daily' || S.screen === 'solo' || S.screen === 'soloResults';
+    const hide = ['title', 'picnics', 'daily', 'solo', 'soloResults', 'wardrobe'].includes(S.screen);
     const key = `${hide}|${room.match.id}|${room.match.phase}`;
     if (key === stripKey) return;
     stripKey = key;
     hideLobby(hide);
+  }
+
+  /** Name tags (projected over each head). */
+  function tagsFor(w, meId, leaderId) {
+    const out = [];
+    for (const h of w.hams) {
+      if (h.gone) continue;
+      const top = world.hamTop(h.id);
+      if (!top) continue;
+      const p = world.worldToScreen(top.wx, top.hy + 0.12, top.wz);
+      if (p.x < -40 || p.y < -40 || p.x > world.vw + 40 || p.y > world.vh + 40) continue;
+      out.push({ x: p.x, y: p.y, name: h.name, me: h.id === meId, seat: h.seat, away: h.away, crown: leaderId === h.id, badge: h.id === meId && (h.fill > TIERS[1].at || (h.chain >= 2 && w.t - h.lastBite < 0.9)) });
+    }
+    return out;
+  }
+  /** My numbers for the badge over my head. */
+  function meBadge(w, me) {
+    if (!me || me.gone) return null;
+    const top = world.hamTop(me.id);
+    if (!top) return null;
+    const p = world.worldToScreen(top.wx, top.hy + 0.15, top.wz);
+    return { x: p.x, y: p.y, fill: me.fill, chain: me.chain, chainFresh: w.t - me.lastBite < 0.9, hotT: me.hotT, gumT: me.gumT, sneezeT: me.sneezeT };
   }
 
   function frame(now) {
@@ -748,8 +1054,15 @@ async function boot() {
     last = now;
     if (!(dt > 0)) dt = 0;
     dt = Math.min(dt, 0.1);
-    const gdt = fx.gate(dt);
-    fx.step(dt);
+    // Hit-stop freezes the world a moment; slow-mo eases it.
+    let gdt = dt;
+    if (S.stop > 0) {
+      S.stop = Math.max(0, S.stop - dt);
+      gdt = 0;
+    } else if (S.slow > 0) {
+      S.slow = Math.max(0, S.slow - dt);
+      gdt = dt * 0.3;
+    }
     if (S.hint) {
       S.hint.age += dt;
       if (S.hint.age >= S.hint.life) S.hint = null;
@@ -760,27 +1073,28 @@ async function boot() {
     }
 
     // A match takes its players out of whatever they were doing; someone watching it only sees it from the lobby.
-    const pulled = room && !room.spectating ? ['title', 'lobby', 'picnics', 'daily', 'solo', 'soloResults'] : ['lobby'];
+    const pulled = room && !room.spectating ? ['title', 'lobby', 'picnics', 'daily', 'solo', 'soloResults', 'wardrobe'] : ['lobby'];
     if (S.net && onlineActive() && pulled.includes(S.screen)) {
       S.solo = null;
       S.paused = false;
       S.screen = 'match';
       S.sheet = null;
-      fx.clear();
-      renderer.resetAnims();
-      renderer.cam.ready = false;
+      hud.clear();
+      world.resetAnims();
+      world.camReady = false;
     }
     if (S.screen === 'match' && !onlineActive()) {
       S.screen = 'lobby';
-      renderer.cam.ready = false;
+      world.camReady = false;
       audio.music('menu');
       audio.strain(0);
     }
     if (autoplay && S.screen === 'title' && now > 1200) play();
+    if (autoplay && S.screen === 'lobby' && now > 2400 && !S.net && params.get('stay') !== '1') startSolo({ kind: params.get('mode') === 'daily' ? 'daily' : 'quick' });
 
     let w;
     let meId = null;
-    let mode = 'follow';
+    let view = { mode: 'follow' };
     const hudView = { dt, reserved: reservedList() };
     let showRing = true;
     let tags = true;
@@ -792,7 +1106,7 @@ async function boot() {
       for (const e of s.w.drain()) juice(e, s.w, null);
       if (s.phase === 'end') newAttract();
       w = S.attract.w;
-      mode = 'drift';
+      view = { mode: 'drift' };
       showRing = false;
       tags = false;
       setControls(false);
@@ -804,7 +1118,7 @@ async function boot() {
       S.attract.step(gdt);
       S.attract.w.drain();
       w = S.attract.w;
-      mode = 'drift';
+      view = { mode: 'drift' };
       showRing = false;
       tags = false;
       setControls(false);
@@ -835,10 +1149,12 @@ async function boot() {
           audio.music('play');
           S.ateAt = 0;
           S.lastSec = -1;
-          renderer.cam.ready = false;
+          world.camReady = false;
+          S.endFocus = null;
           if (m.round <= 1) {
             S.matchPops = 0;
             S.matchLines = [];
+            S.matchSummary = null;
           }
         }
         if (ph === 'round' && prev === 'intro') {
@@ -850,6 +1166,9 @@ async function boot() {
           audio.music('menu');
           audio.strain(0);
           roundEndOnce();
+          const lead = w.leader();
+          S.endFocus = lead ? { id: lead.id, t: 0 } : null;
+          if (lead) world.mood(lead.id, 'win');
         }
       }
       if (room && room.spectating) {
@@ -859,7 +1178,7 @@ async function boot() {
       setControls(ph === 'round' && !!me);
       if (ph === 'intro') {
         const introT = ROUND.intro - (m.secondsLeft ?? 0);
-        introBig(introT, `Round ${m.round}`, m.rounds > 1 ? `of ${m.rounds}` : '');
+        introBig(introT, `Round ${m.round}`, m.rounds > 1 ? `of ${m.rounds}` : w.arena.twist);
         hudView.timer = { left: ROUND.seconds, total: ROUND.seconds };
       }
       if (ph === 'round') {
@@ -867,13 +1186,14 @@ async function boot() {
         if (me) hudView.place = placeOf(w, me);
         hudView.arrows = arrowsFor(w, me);
         if (me) strainFor(me);
+        trails(w, gdt);
       } else audio.strain(0);
       if (ph === 'roundEnd' || ph === 'results') {
-        mode = 'overview';
+        view = endView(w, dt);
         showRing = false;
+        tags = false;
       }
       if (S.watch && (ph === 'round' || ph === 'intro')) hudView.tag = 'Watching · next round';
-      // The buzzer's "Time!" first, then the board.
       if (ph === 'roundEnd') ui.render(S.big && S.big.text === 'Time!' ? 'none' : 'board', boardView(net, w));
       else if (ph === 'results') ui.render('results', resultsView(net, w));
       else ui.render('none');
@@ -903,25 +1223,31 @@ async function boot() {
         scheduleBeats(w, t0, w.t, meId);
         playHints(w, me);
         strainFor(me);
+        trails(w, gdt);
         hudView.timer = { left: s.timeLeft, total: w.duration };
         tickSound(s.timeLeft);
         hudView.place = placeOf(w, me);
         hudView.arrows = arrowsFor(w, me);
       } else audio.strain(0);
       if (s.phase === 'intro') {
-        const title = S.soloInfo.kind === 'picnic' ? `Picnic ${S.soloInfo.n + 1}` : S.soloInfo.kind === 'daily' ? 'Daily' : 'Round 1';
+        const title = S.soloInfo.kind === 'picnic' ? `Picnic ${S.soloInfo.n + 1}` : S.soloInfo.kind === 'daily' ? 'Daily Feast' : 'Round 1';
         introBig(s.introT, title, w.arena.twist);
         hudView.timer = { left: w.duration, total: w.duration };
       }
       if (wasPhase === 'round' && s.phase === 'end') {
         S.big = { kind: 'word', text: 'Time!', t: 0, life: 1.1 };
         audio.music('off');
+        const lead = w.leader();
+        S.endFocus = lead ? { id: lead.id, t: 0 } : null;
+        if (lead) world.mood(lead.id, 'win');
+        if (!lead || lead.id !== 'me') world.mood('me', 'lose');
       }
-      if (s.phase === 'end' && s.endT > 2.2 && !S.soloResult) finishSolo();
+      if (s.phase === 'end' && s.endT > 2.4 && !S.soloResult) finishSolo();
       setControls(s.phase === 'round' && !S.paused);
       if (s.phase === 'end') {
-        mode = s.endT > 0.8 ? 'overview' : 'follow';
+        view = endView(w, dt);
         showRing = false;
+        tags = false;
       }
       if (S.paused) ui.render('pause');
       else if (S.screen === 'soloResults') ui.render('solo', S.soloResult);
@@ -929,22 +1255,34 @@ async function boot() {
       setFlow(S.paused ? 'paused' : S.screen === 'soloResults' ? 'soloResults' : s.phase === 'round' ? 'play' : s.phase);
       S.camTarget = me;
     } else {
-      // The lobby (and Picnics and Daily over it).
+      // The lobby (and Picnics, the Daily and the wardrobe over it).
       S.netEvents.length = 0;
       const s = ensurePractice();
       const me = s.w.byId.get('me');
-      me.coat = S.pick;
+      me.coat = P().coat;
+      dress(s.w);
       syncOthers(s.w);
-      const events = s.step(gdt, () => myInput(s.w, me));
+      const wardrobe = S.screen === 'wardrobe';
+      const events = s.step(gdt, () => (wardrobe ? { mx: 0, my: 0, dash: false } : myInput(s.w, me)));
       for (const e of events) if (e.k !== 'bumpOut') juice(e, s.w, 'me');
+      trails(s.w, gdt);
       w = s.w;
       meId = 'me';
       practice = true;
       setControls(false);
-      input.setEnabled(true);
+      input.setEnabled(!wardrobe);
       if (S.net) S.net.lobbyPresence(me, me.heap);
       S.camTarget = me;
-      if (S.screen === 'picnics') {
+      if (wardrobe) {
+        // Face the camera and pose.
+        me.a += (Math.PI / 2 - me.a) * (1 - Math.exp(-dt * 6));
+        const portrait = document.body.classList.contains('portrait');
+        view = { mode: 'fixed', x: me.x + (portrait ? 0 : 52), y: me.y + (portrait ? 75 : 12), dist: portrait ? 3.7 : 3.0 };
+        tags = false;
+        showRing = false;
+        ui.render('wardrobe', wardrobeView());
+        setFlow('wardrobe');
+      } else if (S.screen === 'picnics') {
         ui.render('picnics', picnicsView());
         setFlow('picnics');
       } else if (S.screen === 'daily') {
@@ -962,22 +1300,33 @@ async function boot() {
     // Camera and drawing.
     const tgt = S.camTarget && w && w.byId.get(S.camTarget.id) ? S.camTarget : null;
     const touch = !!(ow && ow.controls && ow.controls.touch);
-    renderer.camera(w, mode === 'follow' && tgt ? { mode, x: tgt.x, y: tgt.y, vx: tgt.vx || 0, vy: tgt.vy || 0, touch } : mode === 'follow' ? { mode: 'overview' } : { mode }, dt);
+    if (view.mode === 'follow') {
+      if (tgt) view = { mode: 'follow', x: tgt.x, y: tgt.y + (touch && world.vh > world.vw ? 60 : 0), vx: tgt.vx || 0, vy: tgt.vy || 0 };
+      else view = { mode: 'overview' };
+    }
+    world.camera(w, view, dt);
     const leader = w.leader ? w.leader() : null;
-    renderer.draw({ w, me: S.watch && !meId ? null : meId, leader: leader && !practice && S.screen !== 'title' ? leader.id : null, practice, dt, noRing: !showRing, noTags: !tags });
+    const leaderId = leader && !practice && S.screen !== 'title' ? leader.id : null;
+    world.draw({ w, me: S.watch && !meId ? null : meId, leader: leaderId, practice, dt: gdt, noRing: !showRing });
+    if (tags) hudView.tags = tagsFor(w, S.watch && !meId ? null : meId, leaderId);
+    if (meId && showRing && !practice) hudView.me = meBadge(w, w.byId.get(meId));
     if (S.hint && meId) {
       const me = w.byId.get(meId);
       if (me) hudView.hint = { ...S.hint, x: me.x, y: me.y };
     }
     if (S.big) hudView.big = bigView(S.big);
     hud.draw(hudView);
-    if (fx.parts.length) {
-      const c = renderer.ctx;
-      c.save();
-      c.setTransform(renderer.dpr, 0, 0, renderer.dpr, 0, 0);
-      drawScreenParts(c, fx);
-      c.restore();
+  }
+
+  /** The end of a round: a close look at the winner, then the whole table. */
+  function endView(w, dt) {
+    const f = S.endFocus;
+    if (f) {
+      f.t += dt;
+      const h = w.byId.get(f.id);
+      if (h && f.t < 2.2) return { mode: 'fixed', x: h.x, y: h.y + 40, dist: 4.2 };
     }
+    return { mode: 'overview' };
   }
 
   function introBig(introT, title, sub) {
@@ -1017,7 +1366,6 @@ async function boot() {
     for (const f of w.food.values()) if (f.type === GOLDEN && w.t >= f.land - 2) out.push({ kind: 'gold', x: f.x, y: f.y });
     const s = w.sweepNow ? w.sweepNow() : null;
     if (s && me) {
-      // Point at the band where it's nearest.
       const rx = me.x - s.px;
       const ry = me.y - s.py;
       const along = rx * s.dx + ry * s.dy;
@@ -1055,32 +1403,41 @@ async function boot() {
       h.coat = pr.c;
       h.fill = pr.f;
       h.heap = pr.h;
+      dressHam(h, pr.o);
     }
   }
 
   // ------------------------------------------------------------------ screen views
 
+  function levelBar() {
+    const lv = levelOf(P().xp);
+    return { level: lv.level, f: lv.into / lv.need, into: lv.into, need: lv.need };
+  }
+
   function lobbyView() {
     const s = settings();
     const p = P();
     const portrait = document.body.classList.contains('portrait');
-    // The same order as the practice blanket, so a head's bandana matches its burrow.
     const seats = [];
     const lob = S.net ? S.net.lobby() : null;
     const players = lob ? [...lob.players].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).slice(0, 8) : [{ me: true, ready: false, host: false }];
     let mySeat = 0;
     for (const pl of players) {
       if (pl.me) mySeat = seats.length;
-      seats.push({ name: pl.me ? 'You' : pl.name, ready: !!pl.ready, host: !!pl.host, me: !!pl.me, coat: pl.me ? S.pick : coatOf(pl.id), seat: seats.length });
+      const o = pl.me ? myOutfit() : outfitOf(pl.id);
+      seats.push({ name: pl.me ? 'You' : pl.name, ready: !!pl.ready, host: !!pl.host, me: !!pl.me, coat: pl.me ? p.coat : coatOf(pl.id), hat: o.hat, seat: seats.length });
     }
     const nb = s.bots === 'off' ? 0 : 8 - seats.length;
-    for (let i = 0; i < nb && seats.length < 8; i++) seats.push({ name: BOTS[i].name, coat: BOTS[i].coat, seat: seats.length });
+    for (let i = 0; i < nb && seats.length < 8; i++) seats.push({ name: BOTS[i].name, coat: BOTS[i].coat, hat: BOT_OUTFITS[BOTS[i].name]?.hat || '', seat: seats.length });
     while (seats.length < 8) seats.push({ empty: true });
     const arena = arenaById(s.arena);
+    const day = today();
+    const goals = todaysGoals(p, day);
+    const fresh = earnedKeys(p).some((k) => !p.seen.includes(k));
     return {
       portrait,
-      top: portrait ? Math.max(10, menuBottom() + 8) : clearTop(renderer.vw - 14 - cardWidth()),
-      sideTop: Math.round(renderer.vh * 0.42),
+      top: portrait ? Math.max(10, menuBottom() + 8) : clearTop(world.vw - 14 - cardWidth()),
+      sideTop: Math.round(world.vh * 0.4),
       seats,
       isHost: !S.net || (room && room.isHost),
       canInvite: !!(room && room.kind === 'private' && ow && ow.ui && ow.ui.showInvite),
@@ -1088,51 +1445,68 @@ async function boot() {
       twist: arena.twist,
       rounds: s.rounds,
       bots: s.bots,
-      coat: S.pick,
       mySeat,
-      coatName: COATS[S.pick].name,
-      coatLocked: coatUnlocked(p, S.pick) ? '' : coatCondition(S.pick),
-      picnicsWon: p.picnics.won.filter(Boolean).length,
+      stars: starCount(p),
       sheet: S.sheet,
       standalone: !S.net,
+      level: levelBar(),
+      streak: liveStreak(p, day),
+      goalsDone: goals.filter((g) => g.done).length,
+      fresh,
     };
   }
+
+  function wardrobeView() {
+    const p = P();
+    const tab = S.tab;
+    let items;
+    if (tab === 'coat') items = COATS.map((c, i) => ({ arg: `coat:${i}`, name: c.name, on: p.coat === i, locked: !coatUnlocked(p, i), cond: coatCondition(i), key: `coat:${c.key}`, swatch: [c.base, c.belly, c.mark ? c.mark.color : c.dark] }));
+    else if (tab === 'hat') items = [{ arg: 'hat:', name: 'No hat', on: !p.hat, locked: false, cond: '', key: '', icon: 'none' }, ...HAT_LIST.map((h) => ({ arg: `hat:${h.id}`, name: h.name, on: p.hat === h.id, locked: !itemUnlocked(p, 'hat', h.id), cond: itemCondition('hat', h.id), key: `hat:${h.id}`, icon: h.id }))];
+    else if (tab === 'pop') items = POPS.map((x) => ({ arg: `pop:${x.id}`, name: x.name, on: p.pop === x.id, locked: !itemUnlocked(p, 'pop', x.id), cond: itemCondition('pop', x.id), key: `pop:${x.id}`, icon: x.id }));
+    else items = TRAILS.map((x) => ({ arg: `trail:${x.id}`, name: x.name, on: p.trail === x.id, locked: !itemUnlocked(p, 'trail', x.id), cond: itemCondition('trail', x.id), key: `trail:${x.id}`, icon: x.id }));
+    for (const it of items) it.fresh = !!it.key && !it.locked && !p.seen.includes(it.key);
+    // What a tab shows as "New!" counts as seen a moment later.
+    const unseen = items.filter((it) => it.fresh).map((it) => it.key);
+    if (unseen.length && !seenTimer) {
+      seenTimer = setTimeout(() => {
+        seenTimer = null;
+        for (const k of unseen) if (!p.seen.includes(k)) p.seen.push(k);
+        store.save();
+      }, 2500);
+    }
+    const tabs = ['coat', 'hat', 'pop', 'trail'].map((t) => ({ id: t, name: { coat: 'Coats', hat: 'Hats', pop: 'Pops', trail: 'Trails' }[t], fresh: earnedKeys(p).some((k) => k.startsWith(`${t}:`) && !p.seen.includes(k)) }));
+    return { tab, tabs, items, level: levelBar(), portrait: document.body.classList.contains('portrait'), top: clearTop(world.vw - 400) };
+  }
+  let seenTimer = null;
 
   function coatOf(id) {
     const pl = room && room.players.get(id);
     const pr = pl ? readPresence(pl.presence, null) : null;
     return pr ? pr.c : 0;
   }
-
-  const minis = new Map();
-  function mini(i, w = 112, h = 75) {
-    const key = `${i}|${w}`;
-    if (minis.has(key)) return minis.get(key);
-    let url = '';
-    try {
-      const a = arenaById(i);
-      const sc = Math.min(w / a.w, h / a.h) * 2;
-      const c = buildGround(a, sc);
-      url = c.toDataURL('image/jpeg', 0.85);
-    } catch {
-      url = '';
-    }
-    minis.set(key, url);
-    return url;
+  function outfitOf(id) {
+    const pl = room && room.players.get(id);
+    const pr = pl ? readPresence(pl.presence, null) : null;
+    return pr ? pr.o : { hat: '', pop: 'crumbs', trail: 'dust' };
   }
 
   function picnicsView() {
     const p = P();
     return {
       sel: S.plate,
+      stars: starCount(p),
+      crown: CROWN_STARS,
       plates: ARENAS.map((a, i) => ({
         name: a.name,
         twist: a.twist,
         won: p.picnics.won[i],
+        stars: p.picnics.stars[i],
+        goals: ['Win', `Bank ${fmt(PICNIC_GOALS[i].heap)}`, PICNIC_GOALS[i].text],
         best: p.picnics.best[i] ? fmt(p.picnics.best[i]) : '',
         locked: !picnicOpen(p, i),
         unlock: `Win Picnic ${i}`,
-        mini: picnicOpen(p, i) ? mini(i) : '',
+        img: `assets/plates/plate-${i}.jpg`,
+        specials: PICNIC_SPECIALS[i],
       })),
     };
   }
@@ -1142,14 +1516,21 @@ async function boot() {
     const a = arenaById(dailyArena(day));
     const d = new Date(day * 86400000);
     const p = P();
+    const goals = todaysGoals(p, day).map((g) => {
+      const def = goalDef(g.id);
+      return { text: def.text(def.n), have: Math.min(g.have, def.n), n: def.n, done: g.done };
+    });
     return {
       date: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`,
-      mini: mini(a.id, 220, 147),
+      img: `assets/plates/plate-${a.id}.jpg`,
       arenaName: a.name,
       twist: a.twist,
       best: p.daily.day === day && p.daily.best ? fmt(p.daily.best) : '',
+      played: p.daily.lastDay === day,
       rank: S.daily.rank,
       top: S.daily.top,
+      goals,
+      streak: liveStreak(p, day),
     };
   }
 
@@ -1162,7 +1543,7 @@ async function boot() {
       name: seat.me ? 'You' : seat.name,
       me: !!seat.me,
       heap: last && last.points ? fmt(last.points[seat.id] ?? 0) : '0',
-      raw: last && last.points ? last.points[seat.id] ?? 0 : 0,
+      raw: last && last.points ? (last.points[seat.id] ?? 0) : 0,
       total: fmt(scores[seat.id] ?? 0),
       ...seatRow(seat, w, i),
     }));
@@ -1172,8 +1553,8 @@ async function boot() {
       if (i === 0 || r.raw !== rows[i - 1].raw) place = i + 1;
       r.place = place;
     });
-    const bw = Math.min(440, renderer.vw - 24);
-    return { title: m.rounds > 1 ? `Round ${m.round} of ${m.rounds}` : 'Round over', rows, why: reasonLine(w, rows), next: '', canSkip: m.isHost, top: clearTop((renderer.vw - bw) / 2) };
+    const bw = Math.min(460, world.vw - 24);
+    return { title: m.rounds > 1 ? `Round ${m.round} of ${m.rounds}` : 'Round over', rows, why: reasonLine(w, rows), next: '', canSkip: m.isHost, top: clearTop((world.vw - bw) / 2), summary: S.matchSummary };
   }
 
   function resultsView(net, w) {
@@ -1182,26 +1563,15 @@ async function boot() {
     const podium = res.slice(0, 3).map((r) => {
       const seat = m.seats.find((s) => s.id === r.id);
       const h = w ? w.byId.get(r.id) : null;
-      return { name: seat && seat.me ? 'You' : r.name, total: fmt(r.points), place: r.place, coat: h ? h.coat : 0, seat: h ? h.seat : 0 };
+      return { name: seat && seat.me ? 'You' : r.name, total: fmt(r.points), place: r.place, coat: h ? h.coat : 0, seat: h ? h.seat : 0, hat: h ? h.hat : '', me: !!(seat && seat.me) };
     });
     const mine = res.find((r) => m.seats.find((s) => s.id === r.id && s.me));
     const lines = [];
     if (mine) lines.push({ text: `Total ${fmt(mine.points)}` });
     if (mine && mine.place === 1 && S.matchPops === 0) lines.push({ text: 'Never popped!', best: true });
     lines.push(...S.matchLines.slice(0, 3));
-    return { podium, myPlace: mine ? mine.place : 0, headline: 'Results', lines, canNext: m.isHost, next: '' };
+    return { podium, myPlace: mine ? mine.place : 0, headline: 'Results', lines, canNext: m.isHost, next: '', summary: S.matchSummary };
   }
 
   requestAnimationFrame(frame);
 }
-
-// Started last, once every module-level name above exists.
-const posterName = params.get('poster');
-if (posterName) {
-  import('./poster.js')
-    .then((m) => m.runPoster(posterName, params))
-    .catch((e) => {
-      document.body.dataset.error = String((e && e.stack) || e);
-      document.body.dataset.ready = 'error';
-    });
-} else boot().catch((e) => console.error('[chew] boot failed', e));

@@ -96,7 +96,7 @@ export function createAudio() {
   }
 
   const sounds = {
-    munch({ size = 2, fill = 0 } = {}) {
+    munch({ size = 2, fill = 0, chain = 0 } = {}) {
       if (!gate('munch', 0.035)) return;
       const t = ctx.currentTime;
       const big = size >= 18;
@@ -105,6 +105,87 @@ export function createAudio() {
       const f = Math.max(240, 820 - fill * 4.2) * (1 + Math.random() * 0.06);
       tone(t, 'triangle', f, f * 0.8, 0.09, 0.16);
       if (size >= 30) tone(t + 0.08, 'sine', 320, 120, 0.22, 0.3);
+      // A gobble chain climbs the scale.
+      if (chain >= 2) marimba(t + 0.02, note(12 + PENTA[Math.min(PENTA.length - 1, chain - 2)]), 0.12 + Math.min(0.08, chain * 0.01), 0.3);
+    },
+    tier({ n = 1 } = {}) {
+      const t = ctx.currentTime;
+      if (n === 1) {
+        // Stuffed: a bright "ding-ding" and a fat thump.
+        tone(t, 'sine', 140, 70, 0.25, 0.4);
+        marimba(t + 0.02, note(19), 0.22, 0.5);
+        marimba(t + 0.1, note(24), 0.22, 0.6);
+      } else {
+        // Bursting: an alarm-ish wobble.
+        tone(t, 'sine', 110, 55, 0.3, 0.5);
+        for (let i = 0; i < 3; i++) tone(t + i * 0.09, 'square', note(26 + (i % 2) * 3), note(26 + (i % 2) * 3), 0.08, 0.05);
+        bell(t + 0.28, note(28), 0.1);
+      }
+    },
+    sizzle() {
+      const t = ctx.currentTime;
+      hiss(t, 0.7, 'highpass', 4000, 6000, 0.35, 0.7);
+      hiss(t, 0.35, 'bandpass', 500, 2000, 0.3, 0.8);
+      tone(t, 'sawtooth', 220, 660, 0.3, 0.06);
+    },
+    gum() {
+      const t = ctx.currentTime;
+      tone(t, 'sine', 300, 700, 0.12, 0.35);
+      tone(t + 0.1, 'sine', 700, 250, 0.18, 0.25);
+      hiss(t + 0.25, 0.05, 'highpass', 2500, 2500, 0.3);
+    },
+    tickle() {
+      const t = ctx.currentTime;
+      for (let i = 0; i < 4; i++) tone(t + i * 0.08, 'sine', note(14 + i * 2), note(16 + i * 2), 0.07, 0.08);
+    },
+    sneeze() {
+      if (!gate('sneeze', 0.2)) return;
+      const t = ctx.currentTime;
+      tone(t, 'triangle', 500, 800, 0.18, 0.08);
+      hiss(t + 0.2, 0.32, 'bandpass', 2600, 900, 0.75, 0.8);
+      tone(t + 0.2, 'sine', 260, 120, 0.2, 0.25);
+    },
+    boing() {
+      if (!gate('boing', 0.1)) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(180, t);
+      o.frequency.exponentialRampToValueAtTime(520, t + 0.08);
+      o.frequency.exponentialRampToValueAtTime(240, t + 0.35);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 22;
+      const d = ctx.createGain();
+      d.gain.value = 40;
+      lfo.connect(d).connect(o.frequency);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.35, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      o.connect(g).connect(sfx);
+      o.start(t);
+      lfo.start(t);
+      o.stop(t + 0.42);
+      lfo.stop(t + 0.42);
+    },
+    wear() {
+      const t = ctx.currentTime;
+      hiss(t, 0.08, 'bandpass', 1200, 3000, 0.3, 1);
+      marimba(t + 0.04, note(12), 0.16, 0.35);
+      marimba(t + 0.1, note(19), 0.14, 0.4);
+    },
+    xp({ i = 0 } = {}) {
+      marimba(ctx.currentTime, note(12 + PENTA[Math.min(PENTA.length - 1, i)]), 0.1, 0.25);
+    },
+    star({ i = 0 } = {}) {
+      const t = ctx.currentTime;
+      bell(t, note(19 + i * 5), 0.14);
+      tone(t, 'sine', note(31 + i * 5), note(36 + i * 5), 0.25, 0.05);
+    },
+    levelup() {
+      const t = ctx.currentTime;
+      [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => marimba(t + i * 0.06, note(s + 7), 0.22, 0.6));
+      bell(t + 0.45, note(31), 0.16);
+      bell(t + 0.6, note(36), 0.12);
     },
     pop() {
       const t = ctx.currentTime;
@@ -114,12 +195,18 @@ export function createAudio() {
       for (let i = 0; i < 6; i++) hiss(t + 0.45 + i * 0.05 + Math.random() * 0.04, 0.03, 'bandpass', 1800 + Math.random() * 800, 1500, 0.15, 2);
       tone(t + 0.3, 'sine', 1300, 380, 0.7, 0.12);
     },
-    bank({ n = 1, worth = 0, fill = 0 } = {}) {
+    bank({ n = 1, worth = 0, tier = 0 } = {}) {
       const t = ctx.currentTime;
       const steps = Math.min(10, Math.max(1, n));
       for (let i = 0; i < steps; i++) marimba(t + i * 0.055, note(PENTA[i % PENTA.length]), 0.18);
       if (worth >= 60) bell(t + steps * 0.055, note(24), 0.14);
-      if (fill > 100) for (const s of [0, 4, 7, 12]) marimba(t + steps * 0.055 + 0.08, note(s + 12), 0.1, 0.8);
+      const end = t + steps * 0.055 + 0.08;
+      if (tier >= 1) for (const [i, s] of [0, 4, 7, 12].entries()) marimba(end + i * 0.07, note(s + 12), 0.14, 0.8);
+      if (tier >= 2) {
+        for (const [i, s] of [12, 16, 19, 24].entries()) marimba(end + 0.3 + i * 0.07, note(s + 12), 0.16, 0.9);
+        bell(end + 0.62, note(36), 0.16);
+        tone(end, 'sine', 90, 45, 0.5, 0.45);
+      }
     },
     dash() {
       if (!gate('dash', 0.08)) return;

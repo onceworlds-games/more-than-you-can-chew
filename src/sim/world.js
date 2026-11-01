@@ -122,7 +122,7 @@ export function createWorld(o) {
       home: true,
       lastBite: -9,
       trail: [], // recent positions: [t, x, y]
-      stats: { trips: 0, pops: 0, golden: 0, bestTrip: 0, bullied: 0, banked: 0, eaten: 0, swatted: 0, maxFill: 0, lastBank: -9, stuffed: 0, bursting: 0, bestChain: 0, bestBank: 0, specials: 0, sneezes: 0 },
+      stats: { trips: 0, pops: 0, golden: 0, bestTrip: 0, bullied: 0, banked: 0, eaten: 0, swatted: 0, maxFill: 0, lastBank: -9, stuffed: 0, bursting: 0, bestChain: 0, bestBank: 0, specials: 0, sneezes: 0, bumps: 0, spice: 0 },
       brain: null,
     };
     w.hams.push(h);
@@ -209,7 +209,10 @@ export function createWorld(o) {
     h.stats.eaten++;
     h.stats.maxFill = Math.max(h.stats.maxFill, after);
     h.stats.bestChain = Math.max(h.stats.bestChain, c);
-    if (FOODS[f.type].special) h.stats.specials++;
+    if (FOODS[f.type].special) {
+      h.stats.specials++;
+      h.stats.spice |= 1 << (f.type - CHILI);
+    }
     const pop = chance > 0 && unit(w.seed, w.round, h.id, f.id) < chance;
     w.emit({ k: 'eat', id: h.id, type: f.type, x: f.x, y: f.y, fill: after, food: f.id, chance, chain: c });
     if (f.type === PEPPER) h.sneezeAt = w.t + SPECIAL.sneezeDelay;
@@ -326,6 +329,8 @@ export function createWorld(o) {
     }
     h.immuneT = DASH.immune;
     if (kind === 'paw') h.stats.swatted++;
+    const bumper = by ? w.byId.get(by) : null;
+    if (bumper) bumper.stats.bumps++;
     w.emit({ k: 'hit', id: h.id, by, kind, x: h.x, y: h.y, dx: nx, dy: ny, fill: h.fill });
     if (h.fill > 100) w.pop(h, by);
     else w.spill(h, kind === 'paw' ? PAW.spill : DASH.spill, nx, ny);
