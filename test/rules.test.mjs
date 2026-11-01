@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fillOf, worthOf, topSpeed, popChance, spillPick, bulge, reach, knockScale, dashSpeed, emptyCheeks, countOf } from '../game/rules.js';
-import { FOODS, GOLDEN, CAP, MAX, SPEED, COATS, COAT_UNLOCKS, SEATS, BOTS, ALL_COATS, SCHEDULE } from '../game/config.js';
-import { createRng } from '../game/rng.js';
+import { fillOf, worthOf, topSpeed, popChance, spillPick, bulge, reach, knockScale, dashSpeed, emptyCheeks, countOf, tierOf, bankValue } from '../src/sim/rules.js';
+import { FOODS, GOLDEN, CAP, MAX, SPEED, COATS, COAT_UNLOCKS, SEATS, BOTS, ALL_COATS, SCHEDULE } from '../src/sim/config.js';
+import { createRng } from '../src/sim/rng.js';
 
 test('food: sizes fill the cheeks, worth banks; the golden seed is worth more than it fills', () => {
   const c = emptyCheeks();
@@ -37,9 +37,29 @@ test('popping: never at or under full, sure past the max, rising in between', ()
   assert.equal(popChance(0), 0);
   assert.equal(popChance(CAP), 0);
   assert.equal(popChance(MAX + 1), 1);
-  assert.ok(popChance(CAP + 1) > 0.1 && popChance(CAP + 1) < 0.2);
-  assert.ok(popChance(MAX) >= 0.59 && popChance(MAX) <= 0.6);
+  assert.ok(popChance(CAP + 1) > 0.01 && popChance(CAP + 1) < 0.05, 'a little past full is a small risk');
+  assert.ok(popChance(MAX) >= 0.55 && popChance(MAX) <= 0.65, 'at the max, a big one');
   for (let f = CAP + 1; f < MAX; f++) assert.ok(popChance(f + 1) >= popChance(f));
+  assert.ok(popChance(115, 2) < popChance(115, 10) && popChance(115, 10) < popChance(115, 30), 'a seed is a safer bite than a cookie');
+  assert.ok(popChance(139, 30) <= 0.95, 'never certain below the max');
+});
+
+test('stuffed banks pay more: past full doubles it, past 120 triples it; chains ride along', () => {
+  const c = emptyCheeks();
+  c[3] = 9; // crackers: 90
+  assert.equal(tierOf(fillOf(c)), null);
+  assert.equal(bankValue(c, 0), 90);
+  assert.equal(bankValue(c, 5), 95, 'chain bonus adds');
+  c[3] = 11; // 110
+  assert.equal(tierOf(fillOf(c)).key, 'stuffed');
+  assert.equal(bankValue(c, 0), 220);
+  assert.equal(bankValue(c, 5), 230, 'the bonus is multiplied too');
+  c[3] = 12; // exactly 120 is still Stuffed
+  assert.equal(tierOf(fillOf(c)).key, 'stuffed');
+  c[3] = 13; // 130
+  assert.equal(tierOf(fillOf(c)).key, 'bursting');
+  assert.equal(bankValue(c, 0), 390);
+  assert.equal(tierOf(CAP), null, 'exactly full is not stuffed');
 });
 
 test('cheeks bulge and reach further as they fill', () => {

@@ -1,13 +1,15 @@
 // A round's food and cat, decided up front from the seed: every page computes the same schedule, so only what changes
 // (what was eaten, what spilled) ever travels between pages.
 
-import { FOODS, GOLDEN, SCHEDULE as S, PAW, ROUND } from './config.js';
+import { FOODS, GOLDEN, CHILI, GUM, PEPPER, PLAIN_TYPES, SCHEDULE as S, PAW, ROUND } from './config.js';
 import { createRng } from './rng.js';
 import { foodSpotOk, inField, blocked } from './arenas.js';
 
+export const ALL_SPECIALS = [CHILI, GUM, PEPPER];
+
 function pickType(rng) {
   let r = rng.next();
-  for (let i = 0; i < GOLDEN; i++) {
+  for (let i = 0; i < PLAIN_TYPES; i++) {
     r -= FOODS[i].share;
     if (r < 0) return i;
   }
@@ -41,9 +43,9 @@ function middle(rng, arena, part) {
 
 /**
  * The schedule of one round.
- * @param {object} o { seed, arena, burrows (the seats' burrows), duration (s) }
+ * @param {object} o { seed, arena, burrows (the seats' burrows), duration (s), specials (the special types that may drop) }
  */
-export function makeSchedule({ seed, arena, burrows, duration = ROUND.seconds }) {
+export function makeSchedule({ seed, arena, burrows, duration = ROUND.seconds, specials = ALL_SPECIALS }) {
   const rng = createRng(`sched:${seed}:${arena.id}`);
   const seatFactor = Math.max(0.5, Math.min(1, burrows.length / 8));
   const items = [];
@@ -51,6 +53,7 @@ export function makeSchedule({ seed, arena, burrows, duration = ROUND.seconds })
   const goldens = [];
   const cakes = [];
   const sweeps = [];
+  const drops = [];
   const add = (type, x, y, land, src, g = -1) => {
     const it = { i: items.length, type, x: Math.round(x), y: Math.round(y), land, src, g };
     items.push(it);
@@ -114,6 +117,30 @@ export function makeSchedule({ seed, arena, burrows, duration = ROUND.seconds })
     goldens.push({ at: land - S.beacon, land, x: it.x, y: it.y, i: it.i });
   }
 
+  // Specials, one at a time under a little whirl, taking turns (a separate stream, so the rest of the schedule is the same
+  // whichever specials a round allows).
+  const srng = createRng(`special:${seed}:${arena.id}`);
+  const kinds = specials.filter((k) => k === CHILI || k === GUM || k === PEPPER);
+  if (kinds.length) {
+    let order = srng.shuffle(kinds);
+    let k = 0;
+    for (let at = S.specialFrom + srng.range(0, S.specialJitter); at < duration - 8; at += S.specialEvery + srng.range(-S.specialJitter, S.specialJitter)) {
+      if (k >= order.length) {
+        order = srng.shuffle(kinds);
+        k = 0;
+      }
+      const type = order[k++];
+      let p = null;
+      for (let n = 0; n < 20 && !p; n++) {
+        const m = middle(srng, arena, 0.8);
+        if (foodSpotOk(arena, m.x, m.y, FOODS[type].r + 10, burrows)) p = m;
+      }
+      if (!p) continue;
+      const it = add(type, p.x, p.y, at + S.tossShadow, 'special');
+      drops.push({ at, land: it.land, x: it.x, y: it.y, i: it.i, type });
+    }
+  }
+
   // The Birthday Table's cake showers: big pieces round the cake.
   if (arena.cake) {
     for (let at = S.cakeFrom; at < duration - 4; at += S.cakeEvery) {
@@ -163,7 +190,7 @@ export function makeSchedule({ seed, arena, burrows, duration = ROUND.seconds })
     });
   }
 
-  return { items, tosses, goldens, cakes, sweeps, count: items.length };
+  return { items, tosses, goldens, cakes, sweeps, drops, count: items.length };
 }
 
 /** Where the paw is along its line at time t (or null outside the swat). */

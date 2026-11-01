@@ -1,8 +1,8 @@
 // The bot hamsters' brain: they read what a player reads (food they can see, cheeks, shadows, the paw) and play like
 // people, on their own clock, with mistakes that shrink with skill. A personality bends each one.
 
-import { FOODS, GOLDEN, BODY_R, CAP, DASH, PORCH_R } from './config.js';
-import { reach, topSpeed, lerp, clamp } from './rules.js';
+import { FOODS, GOLDEN, CHILI, GUM, PEPPER, BODY_R, CAP, MAX, DASH, PORCH_R, TIERS } from './config.js';
+import { reach, topSpeed, lerp, clamp, popChance } from './rules.js';
 import { waypoint, lit } from './arenas.js';
 import { inBand } from './schedule.js';
 import { createRng } from './rng.js';
@@ -31,8 +31,13 @@ export function brainParams(skill, kind) {
     cluster: s,
     anticipate: s > 0.55,
     topK: Math.max(1, Math.round(1 + (1 - s) * 3)),
-    overstuff: lerp(0.35, 0.02, s), // chance to take a bite that overstuffs anyway
-    weights: [1, 1, 1, 1, 1, 1, 1],
+    overstuff: lerp(0.35, 0.02, s), // chance to take a bite that overstuffs anyway (on a safe trip)
+    stuffed: lerp(0.2, 0.7, s), // chance a trip aims to bank Stuffed
+    bursting: lerp(0.04, 0.12, s), // ... or Bursting
+    risk: lerp(0.4, 1.6, s), // how much a bite's pop chance weighs against it
+    nerve: lerp(0.15, 0.85, s), // reads danger: bails out of a stuffed trip when rivals are near
+    pepperSense: lerp(0.1, 0.95, s), // steers clear of peppercorns
+    weights: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     dyn: 1,
     golden: 1,
     homeBias: 0,
@@ -45,6 +50,9 @@ export function brainParams(skill, kind) {
       p.homeHi += 22;
       p.avoid *= 0.3;
       p.overstuff = Math.max(p.overstuff, 0.55);
+      p.stuffed = Math.min(1, p.stuffed + 0.2);
+      p.bursting = Math.max(p.bursting, 0.35);
+      p.risk *= 0.5;
       p.weights[4] = 1.8;
       p.weights[5] = 2;
       break;
@@ -58,6 +66,8 @@ export function brainParams(skill, kind) {
       p.avoid = 1;
       p.noOver = true;
       p.overstuff = 0;
+      p.stuffed = 0.04;
+      p.bursting = 0;
       break;
     case 'grazer':
       p.homeBias = 1;
@@ -70,6 +80,7 @@ export function brainParams(skill, kind) {
       p.weights[5] = 1.6;
       p.goldenFill += 15;
       p.overstuff = Math.max(p.overstuff, 0.25);
+      p.bursting = Math.max(p.bursting, 0.3);
       break;
     case 'scavenger':
       p.dyn = 2.2;
@@ -80,26 +91,51 @@ export function brainParams(skill, kind) {
   return p;
 }
 
-export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '' } = {}) {
-  const p = brainParams(skill, kind);
+export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '', tune = null } = {}) {
+  const p = Object.assign(brainParams(skill, kind), tune);
   const rng = createRng(`brain:${world.seed}:${world.round}:${h.id}:${seed}`);
   let timer = rng.range(0, p.plan);
   let goal = null; // { x, y, kind, food? }
   let mode = 'forage';
-  let tripHome = rng.range(p.homeLo, p.homeHi);
+  let tripHome = 0;
+  let aim = 'safe'; // what this trip banks: safe, stuffed or bursting
+  let nerveRead = false;
+  let gamble = false;
   let avoidTrip = rng.chance(p.avoid);
   let greedyTrip = rng.chance(p.overstuff);
+  pickAim();
   let errAng = 0;
   let dashAim = null;
   let stuckT = 0;
   let wanderUntil = 0;
   const dodged = new Map();
   const considered = new Map();
+  const pepperWise = rng.chance(p.pepperSense);
+
+  function pickAim() {
+    // Stuffed or safe; Bursting is a gamble taken when a big bite turns up at the right moment.
+    aim = rng.chance(p.stuffed) ? 'stuffed' : 'safe';
+    gamble = rng.chance(p.bursting);
+    // A tier counts the moment you're past it: go home then (every bite past full is a roll).
+    tripHome = aim === 'stuffed' ? TIERS[1].at + 1 : rng.range(p.homeLo, p.homeHi);
+  }
 
   function newTrip() {
-    tripHome = rng.range(p.homeLo, p.homeHi);
+    nerveRead = false;
+    pickAim();
     avoidTrip = rng.chance(p.avoid);
     greedyTrip = rng.chance(p.overstuff);
+  }
+
+  /** Rivals that could bump me soon (ready to dash and close), for a stuffed trip's nerve. */
+  function threats(w) {
+    let n = 0;
+    for (const g of w.hams) {
+      if (g === h || g.away || g.dizzyT > 0 || g.gone) continue;
+      const d = Math.hypot(g.x - h.x, g.y - h.y);
+      if (d < 260 && (g.dashCd ?? 0) < 0.8) n++;
+    }
+    return n;
   }
 
   function visible(w, x, y) {
@@ -126,8 +162,19 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
     const dHome = Math.hypot(h.x - b.x, h.y - b.y);
     const left = w.duration - w.t;
     const need = dHome / Math.max(60, topSpeed(h.fill)) + 1.2;
-    const closeLoad = h.fill >= 55 && dHome < 230;
-    if (h.fill > 0 && (h.fill >= tripHome || closeLoad || left < need + 2.5 + (1 - skill) * 2)) {
+    const closeLoad = aim === 'safe' && h.fill >= 55 && dHome < 230;
+    // Nearly full on a greedy trip with rivals about and a long way home: a careful hamster settles for safe.
+    if (!nerveRead && aim !== 'safe' && h.fill >= 80 && h.fill <= CAP && h.gumT <= 0 && dHome > 380 && threats(w) >= 2) {
+      nerveRead = true; // once a trip, like a person deciding
+      if (rng.chance(p.nerve * 0.6)) {
+        aim = 'safe';
+        tripHome = Math.min(tripHome, h.fill + 4);
+      }
+    }
+    // Past full, a bite at a time: stop when the next one looks too likely to pop.
+    const risky = h.fill > CAP && popChance(h.fill + 4, 4) * p.risk > 0.45;
+    if (h.fill > TIERS[0].at) tripHome = Math.min(tripHome, h.fill);
+    if (h.fill > 0 && (h.fill >= tripHome || risky || closeLoad || left < need + 2.5 + (1 - skill) * 2)) {
       if (mode !== 'home') avoidTrip = rng.chance(p.avoid);
       mode = 'home';
       goal = { x: b.x, y: b.y, kind: 'home' };
@@ -193,15 +240,24 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
       if (until > (golden && p.anticipate ? 2.2 : 0.7)) continue;
       if (!visible(w, f.x, f.y) && !(golden && until <= 0)) continue;
       const after = h.fill + def.size;
-      if (golden) {
-        if (h.fill > p.goldenFill) continue;
-      } else if (after > CAP) {
-        if (p.noOver) continue;
-        if (!greedyTrip) continue;
-      }
+      if (f.type === PEPPER) continue; // never worth going for
+      let risk = 0;
+      if (after > CAP) {
+        if (after > MAX) continue;
+        if (aim === 'safe') {
+          if (golden ? h.fill > p.goldenFill : p.noOver || !greedyTrip) continue;
+        } else if (after > tripHome + 12 && !golden && !(gamble && after > TIERS[0].at && h.fill <= CAP)) continue;
+        risk = popChance(after, def.size);
+      } else if (golden && h.fill > p.goldenFill && aim === 'safe') continue;
       const via = waypoint(w.arena, h.x, h.y, f.x, f.y);
       const d = Math.hypot(via.x - h.x, via.y - h.y) + Math.hypot(f.x - via.x, f.y - via.y);
-      let score = (def.worth * p.weights[f.type] * (golden ? p.golden * 1.4 : 1)) / (d + 80);
+      let worth = def.worth;
+      if (f.type === CHILI) worth = 6 + h.fill * 0.25; // speed home
+      else if (f.type === GUM) worth = 4 + (h.fill > 60 ? h.fill * 0.3 : 0); // a shield for a full trip
+      // Crossing into a tier makes the whole cheekful worth more; a gambler eyes the one bite that jumps to Bursting.
+      if (aim !== 'safe' && h.fill <= CAP && after > CAP) worth += h.fill * 0.5;
+      if (gamble && h.fill >= 85 && h.fill <= CAP && after > TIERS[0].at) worth += h.fill * 1.5;
+      let score = (worth * p.weights[f.type] * (golden ? p.golden * 1.4 : 1) * Math.max(0.05, 1 - risk * p.risk)) / (d + 80);
       if (f.id >= 10000) score *= p.dyn;
       if (p.cluster > 0.2) {
         let around = 0;
@@ -213,6 +269,8 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
         score += (p.cluster * 0.55 * around) / (d + 80);
       }
       if (p.homeBias) score *= Math.max(0.3, 1 - Math.hypot(f.x - b.x, f.y - b.y) / 900);
+      // Nearly full on a greedy trip: the bite that tips it over is best taken close to home.
+      if (aim !== 'safe' && h.fill > 70) score *= Math.max(0.3, 1 - (Math.hypot(f.x - b.x, f.y - b.y) / 800) * skill);
       if (skill > 0.5) {
         for (const g of w.hams) {
           if (g === h) continue;
@@ -246,7 +304,7 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
     goal = pick.f ? { x: pick.f.x, y: pick.f.y, kind: 'food', food: pick.f.id } : { x: pick.toss.x, y: pick.toss.y, kind: 'toss' };
   }
 
-  function steer(w, gx, gy, avoiding, keep) {
+  function steer(w, gx, gy, avoiding, keep, peppers) {
     const dx = gx - h.x;
     const dy = gy - h.y;
     const dist = Math.hypot(dx, dy);
@@ -257,14 +315,19 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
     let bx = ux;
     let by = uy;
     const near = [];
-    if (avoiding) {
+    if (avoiding || peppers) {
       for (const f of w.food.values()) {
         if (w.t < f.land - 0.2 || f.id === keep) continue;
-        if (h.fill + FOODS[f.type].size <= CAP) continue; // harmless: it still fits
+        const pepper = f.type === PEPPER && peppers;
+        // Harmless: it still fits (past full, every bite is a risk).
+        const room = h.fill > CAP ? h.fill : aim === 'safe' ? CAP : CAP + 8;
+        if (!pepper && (!avoiding || h.fill + FOODS[f.type].size <= room)) continue;
         const d2 = (f.x - h.x) ** 2 + (f.y - h.y) ** 2;
-        if (d2 < 150 * 150) near.push(f);
+        if (d2 < 170 * 170) near.push(f);
       }
     }
+    // Look further ahead the faster I go; a careful hamster weighs each piece by what it would cost.
+    const ahead = 55 + topSpeed(h.fill) * 0.35;
     for (let i = 0; i < DIRS; i++) {
       const cx = DIR_X[i];
       const cy = DIR_Y[i];
@@ -277,11 +340,13 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
           const fx = f.x - h.x;
           const fy = f.y - h.y;
           const along = fx * cx + fy * cy;
-          if (along < -10 || along > 75) continue;
+          if (along < -10 || along > ahead) continue;
           const perp = Math.abs(fx * cy - fy * cx);
-          if (perp < reach(h.fill, FOODS[f.type].r) + 5) hits++;
+          const r = reach(h.fill, FOODS[f.type].r) + 6;
+          if (perp < r) hits += f.type === PEPPER ? 1.5 : 0.6 + Math.min(1.4, popChance(h.fill + FOODS[f.type].size, FOODS[f.type].size) * 4);
+          else if (perp < r + 14) hits += 0.25;
         }
-        score -= Math.min(3, hits) * 1.5;
+        score -= Math.min(4, hits) * 1.5;
       }
       if (score > best) {
         best = score;
@@ -289,15 +354,17 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
         by = cy;
       }
     }
-    // Smooth the choice toward the ideal so it doesn't zig-zag between samples.
-    let ax = bx * 0.8 + ux * 0.2;
-    let ay = by * 0.8 + uy * 0.2;
+    // Smooth the choice toward the ideal so it doesn't zig-zag between samples (not while threading between pieces).
+    const threading = near.length > 0 && best < 0.99;
+    let ax = threading ? bx : bx * 0.8 + ux * 0.2;
+    let ay = threading ? by : by * 0.8 + uy * 0.2;
     if (w.blocked(h.x + ax * 26, h.y + ay * 26, BODY_R)) {
       ax = bx;
       ay = by;
     }
-    const c = Math.cos(errAng);
-    const s = Math.sin(errAng);
+    const err = threading ? errAng * (1 - skill) : errAng;
+    const c = Math.cos(err);
+    const s = Math.sin(err);
     const ex = ax * c - ay * s;
     const ey = ax * s + ay * c;
     const l = Math.hypot(ex, ey) || 1;
@@ -311,6 +378,9 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
     },
     get goal() {
       return goal;
+    },
+    get aim() {
+      return aim;
     },
     think(w, me, dt) {
       if (me.dizzyT > 0 || me.stunT > 0) return { mx: 0, my: 0, dash: false };
@@ -340,8 +410,8 @@ export function createBrain(h, world, { skill = h.skill, kind = h.kind, seed = '
         wanderUntil = w.t + 1;
       }
       const via = waypoint(w.arena, me.x, me.y, goal.x, goal.y);
-      const avoiding = avoidTrip && !greedyTrip && me.fill > CAP - 32;
-      const out = steer(w, via.x, via.y, avoiding, goal.kind === 'food' ? goal.food : -1);
+      const avoiding = (avoidTrip && !greedyTrip && me.fill > CAP - 32 && aim === 'safe') || (aim !== 'safe' && me.fill > CAP - 10 && avoidTrip);
+      const out = steer(w, via.x, via.y, avoiding, goal.kind === 'food' ? goal.food : -1, pepperWise && me.fill > 15);
       return { mx: out.mx, my: out.my, dash: false };
     },
   };

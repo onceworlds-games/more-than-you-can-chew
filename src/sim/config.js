@@ -8,19 +8,38 @@ export const FOODS = [
   { key: 'straw', name: 'Strawberry', size: 18, worth: 18, r: 16, share: 0.06 },
   { key: 'cookie', name: 'Cookie', size: 30, worth: 30, r: 22, share: 0.04 },
   { key: 'golden', name: 'Golden seed', size: 25, worth: 60, r: 10, share: 0 },
+  // Specials: each does one thing the moment it's eaten.
+  { key: 'chili', name: 'Chili', size: 4, worth: 4, r: 12, share: 0, special: true },
+  { key: 'gum', name: 'Bubble gum', size: 3, worth: 3, r: 11, share: 0, special: true },
+  { key: 'pepper', name: 'Peppercorn', size: 3, worth: 0, r: 10, share: 0, special: true },
 ];
 export const GOLDEN = 6;
+export const CHILI = 7;
+export const GUM = 8;
+export const PEPPER = 9;
+export const PLAIN_TYPES = 6; // seed..cookie: what tosses are made of
 export const FOOD_TYPES = FOODS.length;
+
+// Banking a stuffed cheekful pays more: the fuller, the more (the fill when you reach home decides).
+export const TIERS = [
+  { at: 120, mult: 3, key: 'bursting', name: 'Bursting' },
+  { at: 100, mult: 2, key: 'stuffed', name: 'Stuffed' },
+];
+// Gobble chains: bites within `gap` seconds chain; every chained bite adds `bonus` that rides in the cheeks.
+export const CHAIN = { gap: 0.6, bonus: 1 };
+// What the specials do.
+export const SPECIAL = { hot: 4, hotSpeed: 1.12, gum: 6, sneezeDelay: 0.9, sneezeSpill: 0.35, sneezeKick: 60 };
 
 export const CAP = 100; // full
 export const MAX = 140; // any bite past this pops for sure
 export const BODY_R = 18;
 
-export const SPEED = { empty: 220, full: 90, max: 65, curve: 1.4 };
+export const SPEED = { empty: 240, full: 100, max: 72, curve: 1.4 };
 export const TAU = { base: 0.06, fill: 0.12 };
 export const PORCH_R = 64;
 
-export const POP = { base: 0.15, top: 0.6, dizzy: 1.2, ringMin: 50, ringMax: 180, land: 0.45 };
+// A bite past full may pop: a little past is a small risk, near the max a big one; big bites are riskier than seeds.
+export const POP = { base: 0.03, top: 0.6, curve: 2, sizeRef: 12, dizzy: 1.2, ringMin: 50, ringMax: 180, land: 0.45 };
 
 export const DASH = {
   time: 0.25,
@@ -59,6 +78,9 @@ export const SCHEDULE = {
   cakeEvery: 15,
   cakeFrom: 10,
   cakeCount: 4,
+  specialFrom: 14,
+  specialEvery: 16,
+  specialJitter: 3,
 };
 
 export const SPILL_LAND = 0.45; // seconds a spilled piece flies before it can be eaten

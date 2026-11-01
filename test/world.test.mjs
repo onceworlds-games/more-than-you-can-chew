@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorld, DYN } from '../game/world.js';
-import { arenaById } from '../game/arenas.js';
-import { FOODS, GOLDEN, CAP, MAX, PORCH_R, POP, DASH, ROUND } from '../game/config.js';
-import { fillOf } from '../game/rules.js';
-import { createLocalSession } from '../game/session.js';
+import { createWorld, DYN } from '../src/sim/world.js';
+import { arenaById } from '../src/sim/arenas.js';
+import { FOODS, GOLDEN, CHILI, GUM, PEPPER, CAP, MAX, PORCH_R, POP, DASH, ROUND, CHAIN, SPECIAL, SPEED } from '../src/sim/config.js';
+import { fillOf } from '../src/sim/rules.js';
+import { createLocalSession } from '../src/session.js';
 
 function world(o = {}) {
   const seats = o.seats ?? [
@@ -70,7 +70,7 @@ test('overstuffed: every bite past full may pop; a pop sprays everything out and
     clearSpot(w, a);
     a.cheeks[5] = 3; // 90
     a.fill = fillOf(a.cheeks);
-    put(w, 4, 902, 600); // +18 = 108: a chance
+    put(w, 5, 902, 600); // +30 = 120: a real chance
     w.step(1 / 60);
     const ev = w.drain();
     if (ev.some((e) => e.k === 'pop')) {
@@ -142,7 +142,7 @@ test('bumps: a dash knocks food out of a rival, pops one past full; burrows and 
   b.immuneT = 0;
   b.x = b.burrow.x + b.burrow.nx * 20;
   b.y = b.burrow.y + b.burrow.ny * 20;
-  b.cheeks = [0, 0, 0, 0, 0, 0, 0];
+  b.cheeks = b.cheeks.map(() => 0);
   b.fill = 0;
   assert.equal(w.hit(b, 'bump', 'a', 1, 0), false);
   assert.ok(Math.hypot(b.x - b.burrow.x, b.y - b.burrow.y) <= PORCH_R);
@@ -266,4 +266,145 @@ test('a round lasts its time and the schedule fills it', () => {
   while (s.phase !== 'end' && n++ < 60 * 200) s.step(1 / 60);
   assert.equal(s.phase, 'end');
   assert.ok(Math.abs(s.w.t - ROUND.seconds) < 1e-6);
+});
+
+/** Puts a hamster on its own porch. */
+function home(h) {
+  h.x = h.burrow.x + h.burrow.nx * 30;
+  h.y = h.burrow.y + h.burrow.ny * 30;
+}
+
+test('gobble chains: quick bites chain and add a bonus that rides in the cheeks', () => {
+  const w = world();
+  const a = w.byId.get('a');
+  clearSpot(w, a);
+  // Three seeds in a row, eaten a few frames apart.
+  for (let i = 0; i < 3; i++) {
+    put(w, 0, a.x + 2, a.y);
+    for (let k = 0; k < 6; k++) w.step(1 / 60);
+  }
+  assert.equal(a.chain, 3);
+  assert.equal(a.bonus, 2 * CHAIN.bonus, 'every bite after the first adds');
+  // A pause breaks the chain; the bonus stays in the cheeks.
+  for (let k = 0; k < 60; k++) w.step(1 / 60);
+  put(w, 0, a.x + 2, a.y);
+  w.step(1 / 60);
+  assert.equal(a.chain, 1);
+  assert.equal(a.bonus, 2 * CHAIN.bonus);
+  w.drain();
+  home(a);
+  w.step(1 / 60);
+  const bank = w.drain().find((e) => e.k === 'bank');
+  assert.equal(bank.worth, 4 * FOODS[0].worth + 2 * CHAIN.bonus);
+  assert.equal(a.bonus, 0);
+  assert.equal(a.stats.bestChain, 3);
+});
+
+test('a pop loses the chain bonus too; a spill takes its share of it', () => {
+  const w = world();
+  const a = w.byId.get('a');
+  clearSpot(w, a);
+  a.cheeks[3] = 10;
+  a.fill = 100;
+  a.bonus = 10;
+  w.t = 10;
+  w.hit(a, 'bump', 'b', 1, 0);
+  assert.ok(a.fill < 100 && a.fill > 0);
+  assert.ok(a.bonus < 10 && a.bonus >= 0, `the bonus shrinks with the cheeks (${a.bonus})`);
+  const w2 = world();
+  const c = w2.byId.get('a');
+  clearSpot(w2, c);
+  c.cheeks[5] = 4;
+  c.fill = 120;
+  c.bonus = 8;
+  w2.pop(c, null);
+  assert.equal(c.bonus, 0);
+  assert.ok(w2.drain().some((e) => e.k === 'pop' && e.lost === 4 * FOODS[5].worth + 8));
+});
+
+test('stuffed banks: over full doubles the cheekful, over 120 triples it', () => {
+  for (const [n, mult, tier] of [[3, 1, null], [11, 2, 'stuffed'], [13, 3, 'bursting']]) {
+    const w = world();
+    const a = w.byId.get('a');
+    a.cheeks[3] = n;
+    a.fill = fillOf(a.cheeks);
+    home(a);
+    w.step(1 / 60);
+    const bank = w.drain().find((e) => e.k === 'bank');
+    assert.equal(bank.tier, tier);
+    assert.equal(a.heap, n * FOODS[3].worth * mult);
+  }
+});
+
+test('chili: full speed whatever the cheeks, and the dash comes back', () => {
+  const w = world();
+  const a = w.byId.get('a');
+  clearSpot(w, a);
+  a.cheeks[3] = 9;
+  a.fill = 90;
+  a.dashCd = 2;
+  put(w, CHILI, a.x + 2, a.y);
+  w.step(1 / 60);
+  assert.ok(a.hotT > 0 && a.dashCd === 0);
+  assert.ok(w.drain().some((e) => e.k === 'hot' && e.id === 'a'));
+  w.food.clear();
+  a.input = { mx: 1, my: 0, dash: false };
+  for (let i = 0; i < 60; i++) w.step(1 / 60);
+  assert.ok(Math.hypot(a.vx, a.vy) > SPEED.full * 1.8, `runs like it's empty (${Math.hypot(a.vx, a.vy).toFixed(0)})`);
+  for (let i = 0; i < 60 * SPECIAL.hot; i++) w.step(1 / 60);
+  assert.equal(a.hotT, 0);
+  assert.ok(Math.hypot(a.vx, a.vy) < SPEED.full * 1.2, 'and back to a waddle');
+});
+
+test('bubble gum: bumps and the paw bounce off; the dasher flies back', () => {
+  const w = world();
+  const a = w.byId.get('a');
+  const b = w.byId.get('b');
+  w.t = 10;
+  clearSpot(w, b, 900, 600);
+  b.cheeks[5] = 4;
+  b.fill = 120;
+  put(w, GUM, b.x + 2, b.y);
+  w.step(1 / 60);
+  assert.ok(b.gumT > 0);
+  a.x = 860;
+  a.y = 600;
+  a.input = { mx: 1, my: 0, dash: true };
+  for (let i = 0; i < 12; i++) w.step(1 / 60);
+  const ev = w.drain();
+  assert.ok(ev.some((e) => e.k === 'boing' && e.id === 'b'), 'a boing');
+  assert.ok(!ev.some((e) => e.k === 'pop' && e.id === 'b'), 'no pop');
+  assert.equal(b.fill, 120 + FOODS[GUM].size);
+  assert.ok(a.x < 860, 'the dasher bounced back');
+  assert.equal(w.hit(b, 'paw', null, 1, 0), false, 'the paw too');
+});
+
+test('peppercorn: a sneeze a moment later spits a third of the cheeks forward', () => {
+  const w = world();
+  const a = w.byId.get('a');
+  clearSpot(w, a);
+  a.cheeks[3] = 9;
+  a.fill = 90;
+  put(w, PEPPER, a.x + 2, a.y);
+  w.step(1 / 60);
+  assert.equal(a.fill, 90 + FOODS[PEPPER].size, 'nothing yet');
+  for (let i = 0; i < 60 * (SPECIAL.sneezeDelay + 0.1); i++) w.step(1 / 60);
+  const ev = w.drain();
+  assert.ok(ev.some((e) => e.k === 'sneeze' && e.id === 'a'));
+  assert.ok(a.fill < 75 && a.fill > 45, `about a third out (${a.fill})`);
+  assert.ok([...w.food.values()].some((f) => f.id >= DYN), 'the pieces fly out to be picked up');
+});
+
+test('specials come from the sky over the round, only the kinds allowed', () => {
+  const w = world({ seed: 3 });
+  const kinds = new Set(w.sched.drops.map((d) => d.type));
+  assert.ok(w.sched.drops.length >= 6, `a few every round (${w.sched.drops.length})`);
+  assert.deepEqual([...kinds].sort(), [CHILI, GUM, PEPPER].sort());
+  const w2 = world({ seed: 3, specials: [CHILI] });
+  assert.ok(w2.sched.drops.every((d) => d.type === CHILI));
+  const w3 = world({ seed: 3, specials: [] });
+  assert.equal(w3.sched.drops.length, 0);
+  // The plain schedule is the same whatever the specials.
+  const plain = (x) => x.sched.items.filter((it) => it.src !== 'special').map((it) => [it.x, it.y, it.type]);
+  assert.deepEqual(plain(w), plain(w3));
 });

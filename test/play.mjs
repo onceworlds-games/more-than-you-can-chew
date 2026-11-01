@@ -1,11 +1,11 @@
 // Shared by the tests: whole rounds played by bots through the pure modules.
-import { createWorld } from '../game/world.js';
-import { createBrain } from '../game/brain.js';
-import { arenaById } from '../game/arenas.js';
-import { BOTS } from '../game/config.js';
+import { createWorld } from '../src/sim/world.js';
+import { createBrain } from '../src/sim/brain.js';
+import { arenaById } from '../src/sim/arenas.js';
+import { BOTS } from '../src/sim/config.js';
 
 /** Plays one round. `skills` per seat (default all 0.5); `kinds` per seat (default each bot's own). */
-export function playRound({ arena = 0, seed = 1, round = 2, seats = 8, skills, kinds, dt = 1 / 30, duration, onStep } = {}) {
+export function playRound({ arena = 0, seed = 1, round = 2, seats = 8, skills, kinds, tunes, dt = 1 / 30, duration, onStep } = {}) {
   const list = Array.from({ length: seats }, (_, i) => ({
     id: `bot:${i + 1}`,
     name: BOTS[i % BOTS.length].name,
@@ -19,7 +19,7 @@ export function playRound({ arena = 0, seed = 1, round = 2, seats = 8, skills, k
     round,
     duration,
     seats: list,
-    brains: (h, world) => createBrain(h, world),
+    brains: (h, world) => createBrain(h, world, tunes ? { tune: tunes[h.seat] } : {}),
   });
   const counts = [];
   const events = [];

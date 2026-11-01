@@ -1,10 +1,10 @@
 // A round played on this page alone: the title's attract mode, the lobby's practice blanket, a Picnic and the Daily.
 // The same world and bot brains the host runs online.
 
-import { createWorld } from './world.js';
-import { createBrain } from './brain.js';
-import { arenaById } from './arenas.js';
-import { BOTS, ROUND } from './config.js';
+import { createWorld } from './sim/world.js';
+import { createBrain } from './sim/brain.js';
+import { arenaById } from './sim/arenas.js';
+import { BOTS, ROUND } from './sim/config.js';
 
 const STEP = 1 / 60;
 
@@ -32,6 +32,7 @@ export function createLocalSession(o) {
     round: o.round ?? 1,
     duration: o.duration ?? ROUND.seconds,
     practice: !!o.practice,
+    specials: o.specials,
     seats,
     brains: (h, world) => createBrain(h, world, { skill: h.skill, kind: h.kind, seed: `${o.seed}:${h.id}` }),
   });

@@ -1,9 +1,9 @@
 // The schedule, the bots and the balance: whole rounds played through the pure modules.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeSchedule } from '../game/schedule.js';
-import { ARENAS, arenaById, burrowsFor, foodSpotOk, inField } from '../game/arenas.js';
-import { FOODS, GOLDEN, ROUND, BODY_R, PAW } from '../game/config.js';
+import { makeSchedule } from '../src/sim/schedule.js';
+import { ARENAS, arenaById, burrowsFor, foodSpotOk, inField } from '../src/sim/arenas.js';
+import { FOODS, GOLDEN, ROUND, BODY_R, PAW } from '../src/sim/config.js';
 import { playRound, median } from './play.mjs';
 
 test('the schedule is the same on every page for a seed, and different for another', () => {
@@ -55,7 +55,7 @@ test('whole rounds on every arena: they end on time, nothing is NaN, nothing thr
   }
 });
 
-test('balance: heaps near 600, winners near 950, nobody runs away with it, food never runs out', () => {
+test('balance: heaps near 1,100, winners near 1,700, nobody runs away with it, food never runs out', () => {
   const heaps = [];
   const winners = [];
   const gaps = [];
@@ -72,8 +72,8 @@ test('balance: heaps near 600, winners near 950, nobody runs away with it, food 
   }
   const m = median(heaps);
   const wm = median(winners);
-  assert.ok(m > 450 && m < 800, `median heap ${m}`);
-  assert.ok(wm > 750 && wm < 1250, `median winner ${wm}`);
+  assert.ok(m > 800 && m < 1500, `median heap ${m}`);
+  assert.ok(wm > 1200 && wm < 2300, `median winner ${wm}`);
   assert.ok(median(gaps) < 1.35, `winners win, but close (first/second ${median(gaps).toFixed(2)})`);
   assert.ok(low >= 8, `there is always food to find (${low})`);
 });
@@ -108,7 +108,7 @@ test('personalities show: the glutton pops most, the banker least', () => {
   const least = Math.min(...Object.values(pops));
   assert.equal(pops.glutton, most, JSON.stringify(pops));
   assert.equal(pops.banker, least, JSON.stringify(pops));
-  assert.ok(pops.glutton >= pops.banker * 4, JSON.stringify(pops));
+  assert.ok(pops.glutton >= pops.banker * 3, JSON.stringify(pops));
 });
 
 test('arena twists are in place', () => {
@@ -120,4 +120,22 @@ test('arena twists are in place', () => {
   assert.ok(arenaById(6).disc, 'Lazy Susan turns');
   assert.ok(arenaById(7).pawAll, "The Cat's Table: the cat is awake all round");
   assert.equal(new Set(ARENAS.map((a) => a.name)).size, 8);
+});
+
+test('the risk pays: good bots that go Stuffed and gamble on Bursting beat good bots that bank safe', () => {
+  const plan = [
+    { name: 'safe', tune: { stuffed: 0, bursting: 0 } },
+    { name: 'greedy', tune: { stuffed: 1, bursting: 1 } },
+  ];
+  const by = { safe: [], greedy: [] };
+  for (const arena of [0, 1, 3, 4]) {
+    for (let seed = 1; seed <= 3; seed++) {
+      const order = Array.from({ length: 8 }, (_, i) => plan[(i + seed + arena) % 2]);
+      const r = playRound({ arena, seed, skills: Array(8).fill(0.85), kinds: Array(8).fill('plain'), tunes: order.map((x) => x.tune) });
+      r.w.hams.forEach((h, i) => by[order[i].name].push(h.heap));
+    }
+  }
+  const safe = median(by.safe);
+  const greedy = median(by.greedy);
+  assert.ok(greedy > safe, `greedy ${greedy} beats safe ${safe}`);
 });

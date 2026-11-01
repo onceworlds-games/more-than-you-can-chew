@@ -1,7 +1,7 @@
 // What a player keeps: coats, Picnics, bests, totals, today's Daily, hints already seen. Saved in ow.save ('profile'),
 // with badges and leaderboards. Pure helpers at the top; the platform calls are all guarded.
 
-import { COATS, COAT_UNLOCKS } from './config.js';
+import { COATS, COAT_UNLOCKS } from './sim/config.js';
 
 export const BADGES = ['first-bite', 'chipmunk-cheeks', 'pop', 'bully', 'golden-seed', 'hoarder', 'clean-plate', 'buzzer-beater', 'daily-crumbs', 'picnic-season'];
 export const HOARDER = 1000;

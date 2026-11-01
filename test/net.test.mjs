@@ -3,13 +3,14 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { Hub, haveSdk, loadHelpers } from './hub.mjs';
-import { createOnline, readSnapshot, readPresence, packBits, unpackBits } from '../game/net.js';
-import { createBrain } from '../game/brain.js';
-import { arenaById } from '../game/arenas.js';
+import { createOnline, readSnapshot, readPresence, packBits, unpackBits } from '../src/net.js';
+import { createBrain } from '../src/sim/brain.js';
+import { arenaById } from '../src/sim/arenas.js';
+import { FOOD_TYPES } from '../src/sim/config.js';
 
 const skip = !haveSdk && 'the SDK helpers (OW_SDK_DIST) are not available';
 const flush = () => new Promise((r) => setImmediate(r));
-const DROP = new Set(['bank', 'pop', 'hit', 'lost']);
+const DROP = new Set(['bank', 'pop', 'hit', 'lost', 'sneeze']);
 
 async function setup(settings, lag = 0) {
   mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: 1_000_000 });
@@ -87,11 +88,11 @@ test('what the room carries is checked', () => {
   assert.equal(p.x, arena.w);
   assert.equal(p.y, 0);
   assert.equal(p.f, 160);
-  assert.ok(p.c < 20 && p.s < 32);
+  assert.ok(p.c < 20 && p.s < 128);
   assert.equal(readSnapshot({ r: 5 }), null);
   const s = readSnapshot({ r: 'm1:1', t: 3, g: '', d: [[5, 1, 1, 1, 1], [20000, 99, 1, 1, 1], [20001, 2, 10, 10, 100]], ch: [[1, 2, 3]], hp: [-4, 'x'], ev: [[1, 2, 3, 'x']] });
   assert.deepEqual(s.d.map((e) => e[0]), [20001], 'only real spills');
-  assert.equal(s.ch[0].length, 7, 'bad cheeks read as empty');
+  assert.equal(s.ch[0].length, FOOD_TYPES, 'bad cheeks read as empty');
   assert.deepEqual(s.hp, [0, 0]);
   assert.equal(s.ev.length, 0);
   const bits = new Uint8Array(37);

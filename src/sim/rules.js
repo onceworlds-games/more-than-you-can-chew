@@ -1,6 +1,6 @@
 // The rules as small pure functions: cheeks, speed, pops, spills. Everything else builds on these.
 
-import { FOODS, FOOD_TYPES, CAP, MAX, SPEED, TAU, POP, DASH, BODY_R } from './config.js';
+import { FOODS, FOOD_TYPES, CAP, MAX, SPEED, TAU, POP, DASH, BODY_R, TIERS } from './config.js';
 
 export const emptyCheeks = () => new Array(FOOD_TYPES).fill(0);
 
@@ -39,11 +39,28 @@ export function bulge(fill) {
 /** Distance at which a hamster eats a piece of food of radius r. */
 export const reach = (fill, r) => 16 + bulge(fill) + r;
 
-/** The chance that a bite leaving the cheeks at `after` pops them. */
-export function popChance(after) {
+/**
+ * The chance that a bite of `size` leaving the cheeks at `after` pops them: none up to full, then rising with how far past
+ * full and how big the bite is (a seed is a nibble, a cookie a gamble); anything past MAX pops for sure.
+ */
+export function popChance(after, size = POP.sizeRef) {
   if (after <= CAP) return 0;
   if (after > MAX) return 1;
-  return POP.base + ((POP.top - POP.base) * (after - CAP)) / (MAX - CAP);
+  const base = POP.base + (POP.top - POP.base) * Math.pow((after - CAP) / (MAX - CAP), POP.curve);
+  const k = Math.min(1.45, Math.max(0.45, 0.4 + (0.6 * size) / POP.sizeRef));
+  return Math.min(0.95, base * k);
+}
+
+/** The bank tier a fill reaches: null (plain), or { mult, key, name }. */
+export function tierOf(fill) {
+  for (const t of TIERS) if (fill > t.at) return t;
+  return null;
+}
+
+/** What a cheekful banks for: its worth plus the gobble bonus, times the tier's multiplier. */
+export function bankValue(cheeks, bonus = 0, fill = fillOf(cheeks)) {
+  const t = tierOf(fill);
+  return Math.round((worthOf(cheeks) + Math.max(0, bonus)) * (t ? t.mult : 1));
 }
 
 export const overstuffed = (fill) => fill > CAP;

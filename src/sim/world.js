@@ -2,8 +2,8 @@
 // attract mode, solo Picnics and the Daily run it whole; online, the host runs it for the food and the bots while each
 // player's body comes from its own page ("remote" hamsters).
 
-import { FOODS, GOLDEN, BODY_R, PORCH_R, POP, DASH, PAW, SCHEDULE, SPILL_LAND, ROUND, botByName } from './config.js';
-import { fillOf, worthOf, topSpeed, tauOf, reach, popChance, dashSpeed, knockScale, spillPick, emptyCheeks, clamp } from './rules.js';
+import { FOODS, GOLDEN, CHILI, GUM, PEPPER, BODY_R, PORCH_R, POP, DASH, PAW, SCHEDULE, SPILL_LAND, ROUND, CHAIN, SPECIAL, SPEED, botByName } from './config.js';
+import { fillOf, worthOf, topSpeed, tauOf, reach, popChance, dashSpeed, knockScale, spillPick, emptyCheeks, clamp, tierOf, bankValue } from './rules.js';
 import { collide, burrowsFor, inSlip, onDisc, spinPoint, fireflies, blocked } from './arenas.js';
 import { makeSchedule, pawHits, inBand } from './schedule.js';
 import { createRng, unit } from './rng.js';
@@ -32,7 +32,7 @@ export function createWorld(o) {
   const duration = practice ? Infinity : o.duration ?? ROUND.seconds;
   const hooks = o.hooks || {};
   const burrows = burrowsFor(arena, o.seats.length);
-  const sched = makeSchedule({ seed: o.seed, arena, burrows, duration: practice ? 24 : duration });
+  const sched = makeSchedule({ seed: o.seed, arena, burrows, duration: practice ? 24 : duration, specials: o.specials });
   if (practice) {
     sched.sweeps.length = 0;
     sched.goldens.length = 0;
@@ -68,7 +68,7 @@ export function createWorld(o) {
     sweptFood: new Set(),
   };
   // Schedule items in the order they appear (their shadow or beacon first).
-  const lead = (it) => (it.src === 'toss' || it.src === 'cake' ? SCHEDULE.tossShadow : it.src === 'golden' ? SCHEDULE.beacon : 0);
+  const lead = (it) => (it.src === 'toss' || it.src === 'cake' || it.src === 'special' ? SCHEDULE.tossShadow : it.src === 'golden' ? SCHEDULE.beacon : 0);
   const order = sched.items.map((it) => it.i).sort((a, b) => sched.items[a].land - lead(sched.items[a]) - (sched.items[b].land - lead(sched.items[b])));
   w.order = order;
   w.showAt = (it) => it.land - lead(it);
@@ -94,7 +94,14 @@ export function createWorld(o) {
       speed: 0,
       cheeks: emptyCheeks(),
       fill: 0,
+      bonus: 0, // gobble-chain bonus riding in the cheeks
+      chain: 0,
       heap: 0,
+      hotT: 0, // chili
+      gumT: 0, // bubble gum
+      sneezeT: 0, // a peppercorn's sneeze coming (counts down on the page that moves the hamster)
+      sneezeAt: 0, // when the authority spills it
+      lastBank: null, // { worth, tier, t }
       remote: false,
       away: false,
       gone: false,
@@ -115,7 +122,7 @@ export function createWorld(o) {
       home: true,
       lastBite: -9,
       trail: [], // recent positions: [t, x, y]
-      stats: { trips: 0, pops: 0, golden: 0, bestTrip: 0, bullied: 0, banked: 0, eaten: 0, swatted: 0, maxFill: 0, lastBank: -9 },
+      stats: { trips: 0, pops: 0, golden: 0, bestTrip: 0, bullied: 0, banked: 0, eaten: 0, swatted: 0, maxFill: 0, lastBank: -9, stuffed: 0, bursting: 0, bestChain: 0, bestBank: 0, specials: 0, sneezes: 0 },
       brain: null,
     };
     w.hams.push(h);
@@ -178,23 +185,52 @@ export function createWorld(o) {
 
   w.inPorch = (h, slack = 0) => Math.hypot(h.x - h.burrow.x, h.y - h.burrow.y) <= PORCH_R + slack;
 
-  /** A hamster eats a piece. Returns { pop }. Only the authority (local world or host) calls it. */
-  w.eat = (h, f) => {
+  /** The gobble chain a bite at time t makes (bites within CHAIN.gap of the last one chain). */
+  w.chainAt = (h, t = w.t) => (t - h.lastBite <= CHAIN.gap ? h.chain + 1 : 1);
+
+  /**
+   * A hamster eats a piece. Returns { pop }. Only the authority (local world or host) calls it. `chain`: the gobble chain
+   * as the eater's own page counted it (online), else counted here.
+   */
+  w.eat = (h, f, chain) => {
     const size = FOODS[f.type].size;
     const after = h.fill + size;
-    const chance = popChance(after);
+    const chance = popChance(after, size);
     w.removeFood(f.id);
     if (!w.eatenAt.has(f.id)) w.eatenAt.set(f.id, { t: w.t, type: f.type, x: f.x, y: f.y });
     if (w.eatenAt.size > 200) for (const [id, e] of w.eatenAt) if (w.t - e.t > 2) w.eatenAt.delete(id);
+    // A chain the eater's page counted holds while the bites came about as fast here (with room for lag).
+    const c = Number.isInteger(chain) && chain >= 1 ? (w.t - h.lastBite <= CHAIN.gap + 0.6 ? Math.min(chain, h.chain + 1) : 1) : w.chainAt(h);
+    h.chain = c;
+    if (c >= 2) h.bonus += CHAIN.bonus;
     h.cheeks[f.type]++;
     h.fill = after;
     h.lastBite = w.t;
     h.stats.eaten++;
     h.stats.maxFill = Math.max(h.stats.maxFill, after);
+    h.stats.bestChain = Math.max(h.stats.bestChain, c);
+    if (FOODS[f.type].special) h.stats.specials++;
     const pop = chance > 0 && unit(w.seed, w.round, h.id, f.id) < chance;
-    w.emit({ k: 'eat', id: h.id, type: f.type, x: f.x, y: f.y, fill: after, food: f.id, chance });
+    w.emit({ k: 'eat', id: h.id, type: f.type, x: f.x, y: f.y, fill: after, food: f.id, chance, chain: c });
+    if (f.type === PEPPER) h.sneezeAt = w.t + SPECIAL.sneezeDelay;
+    if (!h.remote) w.effect(h, f.type);
     if (pop) w.pop(h, null);
     return { pop };
+  };
+
+  /** What a special does to the body that ate it (on the page that moves it). */
+  w.effect = (h, type) => {
+    if (type === CHILI) {
+      h.hotT = SPECIAL.hot;
+      h.dashCd = 0;
+      w.emit({ k: 'hot', id: h.id, x: h.x, y: h.y });
+    } else if (type === GUM) {
+      h.gumT = SPECIAL.gum;
+      w.emit({ k: 'gum', id: h.id, x: h.x, y: h.y });
+    } else if (type === PEPPER) {
+      h.sneezeT = SPECIAL.sneezeDelay;
+      w.emit({ k: 'tickle', id: h.id, x: h.x, y: h.y });
+    }
   };
 
   /** Everything in the cheeks sprays out in a ring. */
@@ -207,9 +243,12 @@ export function createWorld(o) {
       const d = w.rng.range(POP.ringMin, POP.ringMax);
       w.newPiece(type, h.x, h.y, h.x + Math.cos(a) * d, h.y + Math.sin(a) * d, w.rng.range(0, 0.15));
     });
-    const lost = worthOf(h.cheeks);
+    const lost = worthOf(h.cheeks) + h.bonus;
     h.cheeks = emptyCheeks();
     h.fill = 0;
+    h.bonus = 0;
+    h.chain = 0;
+    h.sneezeAt = 0;
     h.stats.pops++;
     h.dizzyT = POP.dizzy;
     h.dashT = 0;
@@ -225,6 +264,7 @@ export function createWorld(o) {
     const pieces = spillPick(h.cheeks, frac, w.rng.next);
     if (pieces.length === 0) return 0;
     const base = Math.atan2(dy, dx);
+    const before = h.fill;
     pieces.forEach((type) => {
       h.cheeks[type]--;
       const a = base + w.rng.range(-1.1, 1.1);
@@ -232,23 +272,32 @@ export function createWorld(o) {
       w.newPiece(type, h.x, h.y, h.x + Math.cos(a) * d, h.y + Math.sin(a) * d, w.rng.range(0, 0.1));
     });
     h.fill = fillOf(h.cheeks);
+    h.bonus = before > 0 ? Math.floor((h.bonus * h.fill) / before) : 0;
     return pieces.length;
   };
 
   /** Banks the cheeks into the heap. */
   w.bank = (h) => {
     if (h.fill <= 0) return 0;
-    const worth = worthOf(h.cheeks);
+    const tier = tierOf(h.fill);
+    const base = worthOf(h.cheeks);
+    const worth = bankValue(h.cheeks, h.bonus, h.fill);
     const counts = h.cheeks.slice();
     h.heap += worth;
     h.stats.trips++;
     h.stats.banked += worth;
     h.stats.golden += h.cheeks[GOLDEN];
     h.stats.bestTrip = Math.max(h.stats.bestTrip, h.fill);
+    h.stats.bestBank = Math.max(h.stats.bestBank, worth);
+    if (tier && tier.key === 'stuffed') h.stats.stuffed++;
+    if (tier && tier.key === 'bursting') h.stats.bursting++;
     h.stats.lastBank = w.t;
-    w.emit({ k: 'bank', id: h.id, worth, fill: h.fill, counts, x: h.burrow.x, y: h.burrow.y, t: w.t });
+    h.lastBank = { worth, tier: tier ? tier.key : null, t: w.t };
+    w.emit({ k: 'bank', id: h.id, worth, base, bonus: h.bonus, tier: tier ? tier.key : null, mult: tier ? tier.mult : 1, fill: h.fill, counts, x: h.burrow.x, y: h.burrow.y, t: w.t });
     h.cheeks = emptyCheeks();
     h.fill = 0;
+    h.bonus = 0;
+    h.chain = 0;
     return worth;
   };
 
@@ -258,6 +307,12 @@ export function createWorld(o) {
    */
   w.hit = (h, kind, by, dx, dy) => {
     if (w.inPorch(h) || h.immuneT > 0 || h.dizzyT > 0 || h.away) return false;
+    if (h.gumT > 0 && !h.remote) {
+      // The bubble takes it: a boing, nothing spills.
+      h.immuneT = 0.4;
+      w.emit({ k: 'boing', id: h.id, by, x: h.x, y: h.y, kind });
+      return false;
+    }
     const d = Math.hypot(dx, dy) || 1;
     const nx = dx / d;
     const ny = dy / d;
@@ -303,6 +358,9 @@ export function createWorld(o) {
     h.away = !!p.away;
     h.remoteDash = !!p.dash;
     h.remoteDizzy = !!p.dizzy;
+    h.remoteGum = !!p.gum;
+    h.remoteHot = !!p.hot;
+    h.remoteTickle = !!p.tickle;
     h.trail.push([w.t, p.x, p.y]);
     while (h.trail.length > 0 && w.t - h.trail[0][0] > 0.6) h.trail.shift();
   };
@@ -343,6 +401,8 @@ export function createWorld(o) {
         // Timers the host keeps for players it doesn't move (it decided their pops and hits).
         h.immuneT = Math.max(0, h.immuneT - dt);
         h.dizzyT = Math.max(0, h.dizzyT - dt);
+        h.hotT = Math.max(0, h.hotT - dt);
+        h.gumT = Math.max(0, h.gumT - dt);
         continue;
       }
       if (h.brain) h.input = h.brain.think(w, h, dt) || h.input;
@@ -362,6 +422,16 @@ export function createWorld(o) {
         else if (hooks.home) hooks.home(h);
       }
       if (h.dashT > 0) bumps(h);
+    }
+    if (w.authority) {
+      for (const h of w.hams) {
+        if (!h.sneezeAt || w.t < h.sneezeAt) continue;
+        h.sneezeAt = 0;
+        if (h.fill > 0 && !h.gone) {
+          w.spill(h, SPECIAL.sneezeSpill, Math.cos(h.a), Math.sin(h.a));
+          w.emit({ k: 'sneezeSpill', id: h.id, x: h.x, y: h.y });
+        }
+      }
     }
     paw(t0, w.t);
     if (practice) refill();
@@ -391,6 +461,24 @@ export function createWorld(o) {
     h.immuneT = Math.max(0, h.immuneT - dt);
     h.stunT = Math.max(0, h.stunT - dt);
     h.dizzyT = Math.max(0, h.dizzyT - dt);
+    h.hotT = Math.max(0, h.hotT - dt);
+    h.gumT = Math.max(0, h.gumT - dt);
+    if (h.sneezeT > 0) {
+      h.sneezeT -= dt;
+      if (h.sneezeT <= 0) {
+        // Achoo: kicked back a little (the authority spills the cheeks).
+        h.sneezeT = 0;
+        const ca = Math.cos(h.a);
+        const sa = Math.sin(h.a);
+        h.kbx = -ca * ((SPECIAL.sneezeKick * 2) / 0.25);
+        h.kby = -sa * ((SPECIAL.sneezeKick * 2) / 0.25);
+        h.kbT = 0.25;
+        h.kbDur = 0.25;
+        h.stunT = Math.max(h.stunT, 0.3);
+        h.stats.sneezes++;
+        w.emit({ k: 'sneeze', id: h.id, x: h.x, y: h.y, dx: ca, dy: sa });
+      }
+    }
     const inp = h.input || { mx: 0, my: 0, dash: false };
     const pressed = !!inp.dash && !h.lastDash;
     h.lastDash = !!inp.dash;
@@ -421,8 +509,9 @@ export function createWorld(o) {
       h.vx = h.dashDx * s;
       h.vy = h.dashDy * s;
     } else {
-      const top = busy ? 0 : topSpeed(h.fill) * mag * (slip ? 1.1 : 1);
-      const tau = tauOf(h.fill) * (slip ? 4 : 1) * (busy ? 0.5 : 1);
+      const hot = h.hotT > 0;
+      const top = busy ? 0 : (hot ? SPEED.empty * SPECIAL.hotSpeed : topSpeed(h.fill)) * mag * (slip ? 1.1 : 1);
+      const tau = (hot ? tauOf(0) : tauOf(h.fill)) * (slip ? 4 : 1) * (busy ? 0.5 : 1);
       const k = 1 - Math.exp(-dt / tau);
       h.vx += (mx * top - h.vx) * k;
       h.vy += (my * top - h.vy) * k;
@@ -511,13 +600,20 @@ export function createWorld(o) {
       if (dx * dx + dy * dy > DASH.hit * DASH.hit) continue;
       h.dashHit.add(g.id);
       if (w.inPorch(g) || g.immuneT > 0 || g.dizzyT > 0 || (g.remote && g.remoteDizzy)) continue;
-      // Recoil, and the dash ends.
+      // Recoil, and the dash ends (a bubble sends you flying back).
       const d = Math.hypot(dx, dy) || 1;
+      const gum = g.gumT > 0 || (g.remote && g.remoteGum);
+      const back = gum ? DASH.recoil * 4 : DASH.recoil;
       h.dashT = 0;
-      h.kbx = (-dx / d) * ((DASH.recoil * 2) / 0.2);
-      h.kby = (-dy / d) * ((DASH.recoil * 2) / 0.2);
+      h.kbx = (-dx / d) * ((back * 2) / 0.2);
+      h.kby = (-dy / d) * ((back * 2) / 0.2);
       h.kbT = 0.2;
       h.kbDur = 0.2;
+      if (gum) {
+        if (g.remote) w.emit({ k: 'boing', id: g.id, by: h.id, x: g.x, y: g.y, kind: 'bump' });
+        else w.hit(g, 'bump', h.id, dx, dy);
+        break;
+      }
       if (g.remote) {
         // Their page decides; here it shows as taken (and isn't sent twice).
         g.immuneT = DASH.immune;
@@ -568,9 +664,10 @@ export function createWorld(o) {
     w.over = true;
     w.t = w.duration;
     for (const h of w.hams) {
-      if (h.fill > 0) w.emit({ k: 'lost', id: h.id, worth: worthOf(h.cheeks), x: h.x, y: h.y });
+      if (h.fill > 0) w.emit({ k: 'lost', id: h.id, worth: worthOf(h.cheeks) + h.bonus, x: h.x, y: h.y });
       h.cheeks = emptyCheeks();
       h.fill = 0;
+      h.bonus = 0;
     }
     w.emit({ k: 'end' });
   };
