@@ -1938,3 +1938,28 @@ body.short .progcard > .in {
     animation: none !important;
   }
 }
+
+/* ------------------------------------------------------------------ store pictures (?poster=) */
+
+body.poster #ui {
+  pointer-events: none;
+}
+.poster-logo {
+  position: absolute;
+  z-index: 5;
+}
+.poster-logo .card {
+  position: relative;
+}
+.poster-logo.tl {
+  left: 4.2vw;
+  top: 6vh;
+  transform: scale(1.12);
+  transform-origin: top left;
+}
+.poster-logo .logo .l1 {
+  font-size: 5vh;
+}
+.poster-logo .logo .l2 {
+  font-size: 8.6vh;
+}

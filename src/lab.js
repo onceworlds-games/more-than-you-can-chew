@@ -47,6 +47,7 @@ export async function runLab(kind, params) {
     stage.scene.add(g);
   });
   const close = params.get('cam') === 'close';
+  if (params.get('pitch')) rig.pitch = Number(params.get('pitch'));
   let last = performance.now();
   let t = 0;
   function frame(now) {

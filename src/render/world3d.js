@@ -383,8 +383,8 @@ function makeHeapFlag(seat) {
 
 // ------------------------------------------------------------------ the world
 
-export function createWorld3d(canvas) {
-  const stage = createStage(canvas);
+export function createWorld3d(canvas, { preserve = false } = {}) {
+  const stage = createStage(canvas, { preserve });
   setAnisotropy(Math.min(8, stage.renderer.capabilities.getMaxAnisotropy()));
   const rig = createRig(stage);
   const scene = stage.scene;

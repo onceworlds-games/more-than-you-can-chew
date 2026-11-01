@@ -57,6 +57,15 @@ const P = (() => {
 
 // ------------------------------------------------------------------ geometry (shared), colours (per coat)
 
+// The cheek pouch: where its centre sits on the face (a unit-sphere direction, +z side) and the point inside the head it
+// inflates from.
+const POUCH = new THREE.Vector3(0.5, -0.12, 0.86).normalize();
+const POUCH_C = (() => {
+  const p = surf(POUCH.x, POUCH.y, POUCH.z);
+  const n = p.clone().sub(new THREE.Vector3(0.1, 0.5, 0)).normalize();
+  return p.addScaledVector(n, -0.42);
+})();
+
 let BASE = null;
 function baseGeometry() {
   if (BASE) return BASE;
@@ -80,18 +89,25 @@ function baseGeometry() {
     dirs[i * 3 + 2] = z;
     surf(x, y, z, s);
     pos.setXYZ(i, s.x, s.y, s.z);
-    // Cheeks: a pouch on each side of the face that pushes outward (and a little down and forward).
-    const az = Math.abs(z);
-    const c = Math.exp(-((x - 0.5) ** 2 / 0.11 + (y + 0.1) ** 2 / 0.12 + (az - 0.78) ** 2 / 0.14));
-    cheek[i] = clamp(c * 1.25, 0, 1);
+    // Cheeks: a round pouch on each side of the face, below the eye. It inflates like a balloon from a point inside the
+    // head (so it swells into a ball, not a wedge); past full a second, wider swell sags it forward and down.
     const sz = Math.sign(z) || 1;
-    morphCheek[i * 3] = c * 0.16;
-    morphCheek[i * 3 + 1] = c * -0.06 + c * y * 0.12;
-    morphCheek[i * 3 + 2] = c * 0.58 * sz;
-    const c2 = Math.exp(-((x - 0.4) ** 2 / 0.2 + (y + 0.05) ** 2 / 0.2 + (az - 0.7) ** 2 / 0.25));
-    morphOver[i * 3] = c2 * 0.1;
-    morphOver[i * 3 + 1] = c2 * 0.08;
-    morphOver[i * 3 + 2] = c2 * 0.42 * sz;
+    const d1 = Math.hypot(x - POUCH.x, y - POUCH.y, Math.abs(z) - POUCH.z);
+    const c = smooth(0.78, 0.05, d1);
+    cheek[i] = clamp(c * 1.15, 0, 1);
+    const ox = s.x - POUCH_C.x;
+    const oy = s.y - POUCH_C.y;
+    const oz = s.z - POUCH_C.z * sz;
+    const ol = Math.hypot(ox, oy, oz) || 1;
+    const k1 = c * c * (3 - 2 * c) * 0.5;
+    morphCheek[i * 3] = (ox / ol) * k1 + c * 0.04;
+    morphCheek[i * 3 + 1] = (oy / ol) * k1 * 0.8 - c * 0.05;
+    morphCheek[i * 3 + 2] = (oz / ol) * k1;
+    const c2 = smooth(0.95, 0.1, d1);
+    const k2 = c2 * c2 * 0.3;
+    morphOver[i * 3] = (ox / ol) * k2 + c2 * 0.06;
+    morphOver[i * 3 + 1] = (oy / ol) * k2 * 0.7 - c2 * 0.07;
+    morphOver[i * 3 + 2] = (oz / ol) * k2;
     // Squish: the whole body spreads (used for pops and heavy landings).
     morphSquish[i * 3] = s.x * 0.18;
     morphSquish[i * 3 + 1] = -(s.y - 0.0) * 0.45;

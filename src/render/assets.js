@@ -13,6 +13,11 @@ gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const texCache = new Map();
 const modelCache = new Map();
 let maxAniso = 4;
+// Loads still on their way (posters wait for none).
+let inflight = 0;
+const begin = () => inflight++;
+const done = () => (inflight = Math.max(0, inflight - 1));
+export const loadsPending = () => inflight;
 export function setAnisotropy(n) {
   maxAniso = n;
 }
@@ -20,7 +25,8 @@ export function setAnisotropy(n) {
 function loadTex(url, srgb, r = [1, 1]) {
   const key = `${url}|${srgb}|${r[0]}|${r[1]}`;
   if (texCache.has(key)) return texCache.get(key);
-  const t = texLoader.load(BASE + url, undefined, undefined, () => {});
+  begin();
+  const t = texLoader.load(BASE + url, done, undefined, done);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = maxAniso;
@@ -62,6 +68,7 @@ export function model(name) {
     modelCache.set(
       name,
       new Promise((res) => {
+        begin();
         gltfLoader.load(
           `${BASE}models/${name}.glb`,
           (g) => {
@@ -72,10 +79,14 @@ export function model(name) {
                 if (o.material && o.material.map) o.material.map.anisotropy = maxAniso;
               }
             });
+            done();
             res(g.scene);
           },
           undefined,
-          () => res(null),
+          () => {
+            done();
+            res(null);
+          },
         );
       }),
     );
@@ -103,10 +114,12 @@ export function fit(obj, size, { axis = 'xz', lift = 0 } = {}) {
 
 /** The sky's reflections: an equirect photo through PMREM. */
 export function environment(renderer, name = 'sunflowers') {
+  begin();
   return new Promise((res) => {
     texLoader.load(
       `${BASE}env/${name}.jpg`,
       (t) => {
+        done();
         t.mapping = THREE.EquirectangularReflectionMapping;
         t.colorSpace = THREE.SRGBColorSpace;
         const pm = new THREE.PMREMGenerator(renderer);
@@ -115,7 +128,10 @@ export function environment(renderer, name = 'sunflowers') {
         res({ env, sky: t });
       },
       undefined,
-      () => res(null),
+      () => {
+        done();
+        res(null);
+      },
     );
   });
 }

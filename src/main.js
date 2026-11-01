@@ -686,7 +686,7 @@ export async function boot() {
             fx.sparkle(e.x * U, 0.3, e.y * U, 16, '#fff2a8', 0.8);
           }
           const c = e.chain || 0;
-          if (c >= 3 && (c === 3 || c === 5 || c >= 8)) {
+          if (c === 3 || c === 5 || c === 8 || (c > 8 && c % 4 === 0)) {
             hud.float(e.x, e.y, 0.7, `Gobble ×${c}!`, '#2DC38A', 24 + Math.min(10, c), 0.9);
             fx.sparkle(e.x * U, 0.4, e.y * U, 6 + c, '#bfffd0', 0.5, 0.1);
             if (c === 3) showHint('chain', 'Gobble chains add up!');
@@ -1047,10 +1047,23 @@ export async function boot() {
     return { x: p.x, y: p.y, fill: me.fill, chain: me.chain, chainFresh: w.t - me.lastBite < 0.9, hotT: me.hotT, gumT: me.gumT, sneezeT: me.sneezeT };
   }
 
+  const frameMs = [];
+  if (dev) {
+    window.__fps = () => {
+      const a = frameMs.slice(-180);
+      const avg = a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+      return { fps: Math.round(1000 / avg), worst: Math.round(Math.max(...a)), slow: a.filter((x) => x > 20).length, n: a.length };
+    };
+  }
+
   function frame(now) {
     requestAnimationFrame(frame);
     S.camTarget = null;
     let dt = (now - last) / 1000;
+    if (dev) {
+      frameMs.push(now - last);
+      if (frameMs.length > 600) frameMs.splice(0, 300);
+    }
     last = now;
     if (!(dt > 0)) dt = 0;
     dt = Math.min(dt, 0.1);

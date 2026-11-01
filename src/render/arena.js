@@ -270,34 +270,52 @@ function campfire(r) {
     g.add(s);
   }
   const wood = std('#6b4423', { roughness: 0.9 });
-  for (let i = 0; i < 4; i++) {
-    const l = mesh(new THREE.CylinderGeometry(r * 0.08, r * 0.1, r * 1.2, 8), wood);
-    l.rotation.set(Math.PI / 2.6, (i / 4) * Math.PI * 2, 0);
-    l.position.y = r * 0.25;
+  const char = std('#2a1a12', { roughness: 1 });
+  // A teepee of logs (their tops meet over the middle), charred at the tips.
+  const len = r * 1.25;
+  const tilt = 0.6;
+  for (let i = 0; i < 5; i++) {
+    const az = (i / 5) * Math.PI * 2 + 0.3;
+    const l = mesh(new THREE.CylinderGeometry(r * 0.075, r * 0.1, len, 8), i % 2 ? wood : char);
+    l.rotation.set(tilt, az, 0, 'YXZ');
+    const d = (len / 2) * Math.sin(tilt);
+    l.position.set(-Math.sin(az) * d, (len / 2) * Math.cos(tilt), -Math.cos(az) * d);
     g.add(l);
   }
+  // Embers at the base.
+  const ember = new THREE.MeshBasicMaterial({ color: '#ff6a1a', toneMapped: false });
+  for (let i = 0; i < 7; i++) {
+    const a = i * 2.4;
+    const e = new THREE.Mesh(new THREE.DodecahedronGeometry(r * 0.07, 0), ember);
+    e.position.set(Math.cos(a) * r * 0.28, r * 0.03, Math.sin(a) * r * 0.28);
+    g.add(e);
+  }
+  // Flames: layered glows that rise and shrink (each its own material so each fades on its own).
   const flames = new THREE.Group();
-  const fm = new THREE.MeshBasicMaterial({ map: glowTexture(), color: '#ff8a2a', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-  for (let i = 0; i < 6; i++) {
-    const s = new THREE.Sprite(fm);
+  const tones = ['#fff2b0', '#ffb43a', '#ff7a1a', '#ff4a10'];
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE.SpriteMaterial({ map: glowTexture(), color: tones[i % tones.length], transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const s = new THREE.Sprite(m);
     s.userData.k = i;
+    s.userData.core = i % tones.length === 0;
     flames.add(s);
   }
-  flames.position.y = r * 0.3;
+  flames.position.y = r * 0.2;
   g.add(flames);
-  const light = new THREE.PointLight('#ff9a4a', 4, r * 9, 1.6);
-  light.position.y = r * 0.8;
+  const light = new THREE.PointLight('#ff9a4a', 4, r * 10, 1.5);
+  light.position.y = r * 0.9;
   g.add(light);
   g.userData.tick = (t) => {
     flames.children.forEach((s) => {
       const k = s.userData.k;
-      const ph = (t * 1.4 + k / 6) % 1;
-      s.position.set(Math.sin(k * 2.1 + t * 3) * r * 0.15, ph * r * 1.3, Math.cos(k * 1.7 + t * 2.4) * r * 0.15);
-      const sz = r * (0.9 - ph * 0.6);
-      s.scale.set(sz, sz * 1.4, 1);
-      s.material.opacity = 1 - ph;
+      const ph = (t * 1.3 + k / 10) % 1;
+      const sway = Math.sin(t * 3.1 + k) * r * 0.12;
+      s.position.set(Math.sin(k * 2.1 + t * 3) * r * 0.12 + sway * ph, ph * r * 1.5, Math.cos(k * 1.7 + t * 2.4) * r * 0.12);
+      const sz = r * (s.userData.core ? 0.7 : 1.05) * (1 - ph * 0.65);
+      s.scale.set(sz, sz * 1.5, 1);
+      s.material.opacity = (1 - ph) * (s.userData.core ? 1 : 0.85);
     });
-    light.intensity = 3.5 + Math.sin(t * 13) * 0.5 + Math.sin(t * 7.3) * 0.4;
+    light.intensity = 3.6 + Math.sin(t * 13) * 0.5 + Math.sin(t * 7.3) * 0.4;
   };
   return g;
 }
@@ -741,7 +759,7 @@ export function buildArena(arena, { quality = 'high', seats = 8, burrows = [] } 
     const ang = Math.atan2(bz - az, bx - ax);
     const wgeo = new THREE.PlaneGeometry(len + 2, s.r * U * 2.6, 60, 4);
     wgeo.rotateX(-Math.PI / 2);
-    const wm = phys({ color: '#6fb6c9', roughness: 0.05, transparent: true, opacity: 0.82, clearcoat: 1, metalness: 0.1 });
+    const wm = phys({ color: '#2f8aa0', roughness: 0.04, transparent: true, opacity: 0.9, clearcoat: 1, metalness: 0.15 });
     const wu = { uTime: { value: 0 } };
     wm.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, wu);
@@ -755,7 +773,19 @@ export function buildArena(arena, { quality = 'high', seats = 8, burrows = [] } 
           float w2 = sin(vW.x * 14.0 + vW.z * 9.0 - uTime * 5.5);
           normal = normalize(normal + vec3(w1 * 0.12, 0.0, w2 * 0.1));`,
         )
-        .replace('#include <color_fragment>', `#include <color_fragment>\nfloat edge = smoothstep(0.0, 0.5, 1.0 - abs(vW.z) / ${(s.r * U * 1.3).toFixed(3)});\ndiffuseColor.rgb = mix(vec3(0.55, 0.45, 0.3), diffuseColor.rgb, edge);\ndiffuseColor.rgb += vec3(0.9) * smoothstep(0.92, 1.0, sin(vW.x * 20.0 - uTime * 6.0 + vW.z * 3.0)) * 0.3;`);
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          float across = abs(vW.z) / ${(s.r * U * 1.3).toFixed(3)};
+          float deep = 1.0 - smoothstep(0.0, 0.95, across);
+          // Shallow sandy edges, a deep teal middle, foam where it meets the bank, glints that run downstream.
+          diffuseColor.rgb = mix(vec3(0.62, 0.55, 0.38), diffuseColor.rgb, smoothstep(0.0, 0.35, deep));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.08, 0.32, 0.4), deep * 0.55);
+          float foam = smoothstep(0.78, 0.98, across) * (0.55 + 0.45 * sin(vW.x * 23.0 - uTime * 3.0));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 0.95), foam * 0.7);
+          diffuseColor.rgb += vec3(0.9) * smoothstep(0.93, 1.0, sin(vW.x * 20.0 - uTime * 6.0 + vW.z * 3.0)) * 0.35 * deep;
+          diffuseColor.a = mix(0.75, 0.95, deep);`,
+        );
     };
     ticks.push((dt, t) => (wu.uTime.value = t));
     const water = mesh(wgeo, wm, false);
@@ -763,10 +793,20 @@ export function buildArena(arena, { quality = 'high', seats = 8, burrows = [] } 
     water.rotation.y = -ang;
     group.add(water);
     // Banks: darker wet earth either side.
-    const bank = new THREE.Mesh(new THREE.PlaneGeometry(len + 2, s.r * U * 3.4), std('#4b3622', { roughness: 0.95 }));
-    bank.rotation.x = -Math.PI / 2;
+    const bgeo = new THREE.PlaneGeometry(len + 2, s.r * U * 3.4);
+    bgeo.rotateX(-Math.PI / 2);
+    const bank = new THREE.Mesh(bgeo, std('#4b3622', { roughness: 0.95 }));
     bank.position.set((ax + bx) / 2, 0.002, (az + bz) / 2);
-    bank.rotation.z = ang;
+    bank.rotation.y = -ang;
+    // Pebbles along both banks.
+    for (let i = 0; i < 14; i++) {
+      const u = (i + 0.5) / 14 + (Math.sin(i * 12.9) * 0.5) / 14;
+      const side = i % 2 ? 1 : -1;
+      const off = s.r * U * (1.45 + Math.abs(Math.sin(i * 7.3)) * 0.25) * side;
+      const px = ax + (bx - ax) * u + Math.cos(ang + Math.PI / 2) * off;
+      const pz = az + (bz - az) * u + Math.sin(ang + Math.PI / 2) * off;
+      stoneProp(0.07 + Math.abs(Math.sin(i * 3.1)) * 0.07).then((st) => st && add(st, px, pz, -0.01, i * 1.7));
+    }
     bank.receiveShadow = true;
     group.add(bank);
     // Log bridges and stepping stones at the crossings.

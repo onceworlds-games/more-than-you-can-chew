@@ -82,7 +82,7 @@ const Grade = {
           float d = length(p.xz - L.xy);
           lit = max(lit, smoothstep(L.z, L.z * 0.45, d));
         }
-        vec3 night = col * uDarkTint * 2.2 + uDarkTint * 0.02;
+        vec3 night = col * uDarkTint * 3.6 + uDarkTint * 0.05;
         col = mix(col, night, uDark * (1.0 - lit));
       }
       float v = smoothstep(0.95, 0.25, length((vUv - 0.5) * vec2(1.15, 1.0)));
@@ -98,8 +98,8 @@ const QUALITY = {
   high: { shadows: 2048, post: true, bloom: true, tilt: true },
 };
 
-export function createStage(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: false, alpha: false });
+export function createStage(canvas, { preserve = false } = {}) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: preserve, alpha: false });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;

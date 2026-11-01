@@ -127,8 +127,8 @@ const MAKE = {
     const holes = [];
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) holes.push([i * 0.42, j * 0.42]);
     colorize(g, (c, x, y, z) => {
-      c.copy(C('#d99a45'));
-      c.lerp(C('#b8742c'), Math.min(1, Math.max(0, (Math.max(Math.abs(x), Math.abs(z)) - 0.62) * 3)));
+      c.copy(C('#d6a457'));
+      c.lerp(C('#b27a36'), Math.min(1, Math.max(0, (Math.max(Math.abs(x), Math.abs(z)) - 0.62) * 3)));
       if (y > 0.3) for (const [hx, hz] of holes) if ((x - hx) ** 2 + (z + hz) ** 2 < 0.006) c.copy(C('#7a4518'));
       c.lerp(C('#efc277'), Math.max(0, noise(x * 4, 0, z * 4)) * 0.3);
     });
@@ -171,37 +171,41 @@ const MAKE = {
     stem.translate(-1.25, 0.72, 0);
     leaves.push(colorize(stem, (c) => c.copy(C('#3f7f25'))));
     const all = mergeGeometries([g.toNonIndexed(), ...leaves.map((l) => l.toNonIndexed())]);
-    all.computeVertexNormals();
     return { geo: all, mat: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.28, clearcoat: 0.8, clearcoatRoughness: 0.2 }) };
   },
   cookie() {
-    const g = new THREE.CylinderGeometry(1, 0.96, 0.36, 36, 3);
+    // A baked dome with a rounded rim, a lumpy top and browned edges, studded with chocolate chunks.
+    const top = (r) => 0.12 + 0.26 * Math.sqrt(Math.max(0, 1 - r * r));
+    const g = new THREE.SphereGeometry(1, 44, 22);
     displace(g, (v) => {
       const a = Math.atan2(v.z, v.x);
-      const r = Math.hypot(v.x, v.z);
-      const edge = 1 + Math.sin(a * 7) * 0.025 + Math.sin(a * 13 + 1) * 0.02;
+      const edge = 1 + Math.sin(a * 7) * 0.03 + Math.sin(a * 13 + 1) * 0.02;
       v.x *= edge;
       v.z *= edge;
-      if (v.y > 0) v.y += noise(v.x * 2.4, 0, v.z * 2.4) * 0.07 + (1 - r) * 0.12;
-      v.y += 0.18;
+      const up = v.y > 0;
+      v.y *= up ? 0.26 : 0.12;
+      if (up) v.y += noise(v.x * 2.6, 0, v.z * 2.6) * 0.05;
+      v.y += 0.12;
     });
     const chips = [];
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 10; i++) {
       const a = h1(i * 3) * Math.PI * 2;
-      const r = Math.sqrt(h1(i * 7 + 1)) * 0.72;
-      const ch = new THREE.DodecahedronGeometry(0.13 + h1(i) * 0.05, 0);
-      ch.scale(1, 0.75, 1);
-      ch.translate(Math.cos(a) * r, 0.45 + (1 - r) * 0.1, Math.sin(a) * r);
-      chips.push(colorize(ch, (c) => c.copy(C('#3a1f12'))));
+      const r = Math.sqrt(h1(i * 7 + 1)) * 0.74;
+      const ch = new THREE.SphereGeometry(0.12 + h1(i) * 0.05, 8, 6);
+      displace(ch, (v) => v.multiplyScalar(1 + noise(v.x * 9 + i, v.y * 9, v.z * 9) * 0.25));
+      ch.scale(1, 0.72, 1);
+      ch.translate(Math.cos(a) * r, top(r) + 0.01, Math.sin(a) * r);
+      chips.push(colorize(ch, (c, x, y) => c.copy(C(y > top(r) + 0.05 ? '#5a3220' : '#3a1f12'))));
     }
     colorize(g, (c, x, y, z) => {
-      c.copy(C('#c98a4b'));
-      c.lerp(C('#e6b06a'), Math.max(0, noise(x * 3, y, z * 3)) * 0.6);
-      if (y < 0.1) c.lerp(C('#8a5428'), 0.6);
+      c.copy(C('#c08a52'));
+      c.lerp(C('#e4ba80'), Math.max(0, noise(x * 3, y, z * 3)) * 0.6);
+      const r = Math.hypot(x, z);
+      if (r > 0.78) c.lerp(C('#9a5f30'), Math.min(1, (r - 0.78) * 3));
+      if (y < 0.12) c.lerp(C('#8a5428'), 0.6);
     });
     const all = mergeGeometries([g.toNonIndexed(), ...chips.map((c) => c.toNonIndexed())]);
-    all.computeVertexNormals();
-    return { geo: all, mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }) };
+    return { geo: all, mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 }) };
   },
   golden() {
     const base = MAKE.seed().geo.clone();
@@ -242,7 +246,6 @@ const MAKE = {
     cap.translate(-0.98, 0.45, -0.2);
     colorize(cap, (c) => c.copy(C('#4f9e2f')));
     const all = mergeGeometries([g.toNonIndexed(), stem.toNonIndexed(), cap.toNonIndexed()]);
-    all.computeVertexNormals();
     return { geo: all, mat: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.08, emissive: C('#400000'), emissiveIntensity: 0.4 }) };
   },
   gum() {
