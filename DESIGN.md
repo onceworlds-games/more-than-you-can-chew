@@ -309,7 +309,7 @@ about 70 pieces on the table (median), never fewer than a dozen.
 **Clock**: round 2:30, intro 4 s, round end 7 s, results 30 s (host can skip).
 
 **Camera**: a perspective camera 52° above the table (a little steeper in portrait) following your hamster with look-ahead,
-showing about 8.8 m of table across in landscape and 5.6 in portrait; it punches in on a Stuffed or Bursting bank and a pop, and
+showing about 8.8 m of table across in landscape and 5.1 in portrait; it punches in on a Stuffed or Bursting bank and a pop, and
 shakes (smooth noise, directional) on bumps, pops and the paw. A pop of yours: 0.12 s hit-stop; your winning bank: slow motion.
 
 **Bots** read the same table a player does. Skill is one number from 0 to 1 (Easy 0.15, Normal 0.5, Hard 0.85; Picnics climb

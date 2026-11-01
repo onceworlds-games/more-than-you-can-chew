@@ -78,12 +78,15 @@ export function createLocalSession(o) {
         return out;
       }
       if (s.phase === 'round') {
+        // Whole steps, then the remainder as a short one, so the world is drawn exactly where it is now (smooth at any
+        // refresh rate, no judder between 60 Hz steps and 120 Hz frames).
         s.acc = Math.min(s.acc + dt, 0.25);
-        while (s.acc >= STEP) {
-          s.acc -= STEP;
+        while (s.acc > 1e-6) {
+          const d = Math.min(STEP, s.acc);
+          s.acc -= d;
           const me = s.mine;
           if (me && input) me.input = input();
-          w.step(STEP);
+          w.step(d);
           for (const e of w.drain()) out.push(e);
           if (w.over) {
             s.phase = 'end';

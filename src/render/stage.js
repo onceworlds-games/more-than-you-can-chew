@@ -297,7 +297,7 @@ export function createRig(stage) {
     if (o.mode === 'follow') {
       tx = o.x + (o.vx || 0) * 0.35;
       tz = o.z + (o.vz || 0) * 0.3;
-      const span = portrait ? 5.6 : 8.8;
+      const span = portrait ? 5.1 : 8.8;
       dist = across(span) * (o.zoom || 1);
       dist = Math.min(dist, portrait ? 16 : 22);
     } else if (o.mode === 'drift') {
