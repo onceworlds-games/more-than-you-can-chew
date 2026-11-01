@@ -219,8 +219,7 @@ export function createUi(root, handlers) {
           </div>
           <div class="lc-b">
             ${settings}
-            <div class="solo-row">${modeButtons(v)}</div>
-            ${v.standalone ? `<div style="display:flex;justify-content:center">${btn('quick', 'Start', '')}</div>` : ''}
+            <div class="solo-row${v.standalone ? ' has-start' : ''}">${modeButtons(v)}${v.standalone ? btn('quick', 'Start', '') : ''}</div>
           </div>
         </div></div>`;
     },

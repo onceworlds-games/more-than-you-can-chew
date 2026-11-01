@@ -450,7 +450,11 @@ export function createHud(canvas, world) {
       const s = u < 0.18 ? easeOutBack(u / 0.18) : 1 + (u - 0.18) * 0.15;
       ctx.globalAlpha = u > 0.8 ? 1 - (u - 0.8) / 0.2 : 1;
       ctx.scale(s, s);
-      const size = big.text.length > 2 ? Math.min(140, vw * 0.24) : Math.min(180, vw * 0.4);
+      let size = big.text.length > 2 ? Math.min(140, vw * 0.24) : Math.min(180, vw * 0.4);
+      // Fits the screen's width even as it swells.
+      ctx.font = `${size}px ${DISPLAY}`;
+      const tw = ctx.measureText(big.text).width;
+      if (tw > vw * 0.78) size *= (vw * 0.78) / tw;
       label(big.text, 0, 0, size, { color: big.color || CREAM, outline: 0.15 });
     }
     ctx.restore();

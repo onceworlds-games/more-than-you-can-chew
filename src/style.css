@@ -434,6 +434,9 @@ canvas#hud {
 .solo-row .bis:nth-child(3) {
   grid-column: 1 / -1;
 }
+.solo-row.has-start .bis:nth-child(3) {
+  grid-column: auto;
+}
 .count {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 15px;
