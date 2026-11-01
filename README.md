@@ -1,11 +1,24 @@
 # More Than You Can Chew
 
-Stuff your cheeks, bank it in your burrow, don't pop. Most food wins.
+Hamsters at a giant picnic. Stuff your cheeks, bank it in your burrow, don't pop. Most food wins.
 
-A 2D party game for up to 8 hamsters (bots fill the rest): run over food to eat it, waddle home to bank it, bump rivals to
-knock their food loose, and don't take one bite too many. Picnics (a ladder of eight arenas) and a Daily for playing alone.
+A 3D party game for up to 8 hamsters (bots fill the empty seats). Run over food to eat it and waddle home to bank it. Past
+full a cheekful banks for double, past 120 for triple, but every bite may pop you and spray it all over the cloth. Chain quick
+bites into gobbles, bump rivals to knock their food loose, grab the golden seed under its shaft of light, and watch for the
+cat's paw in the last thirty seconds.
+
+Alone: eight Picnics with three stars each, a Daily Feast (the same table for everyone, a streak and three goals a day) and
+quick rounds. Everything you play earns XP: levels unlock hats, pop effects and trails in the Wardrobe, feats unlock coats.
 
 Play: https://onceworlds.com/play/more-than-you-can-chew
+
+## Run it
+
+```sh
+npm install
+npm run dev      # http://localhost:5173 (dev only: ?autoplay=1 plays itself, ?lab=hams shows the hamsters up close)
+npm run build    # dist/, what the platform serves
+```
 
 ## Tests
 
@@ -13,7 +26,8 @@ Play: https://onceworlds.com/play/more-than-you-can-chew
 npm test
 ```
 
-Plain Node (`node --test`), no install. The online tests use the Onceworlds SDK's built helpers and skip themselves when
-they aren't there (`OW_SDK_DIST` points at them).
+Plain Node (`node --test`): rules, whole bot rounds on every arena (balance, food, bots), the world's mechanics, progression
+(levels, stars, Daily goals and streaks, outfits, saves) and online play. The online tests use the Onceworlds SDK's built
+helpers and skip themselves when they aren't there (`OW_SDK_DIST` points at them).
 
-MIT licensed.
+Art credits: [CREDITS.md](CREDITS.md). MIT licensed.
