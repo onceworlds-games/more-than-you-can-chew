@@ -488,7 +488,7 @@ function logo(ctx, x, y, w) {
 
 // ------------------------------------------------------------------ screens (debug: every screen at any size)
 
-async function screen(kind, r, fx, W, H) {
+async function screen(kind, r, W, H) {
   const { createUi } = await import('./ui.js');
   const { createHud } = await import('./hud.js');
   const { COATS } = await import('./config.js');
@@ -589,7 +589,6 @@ async function screen(kind, r, fx, W, H) {
     const hud = createHud(r);
     hud.draw({ dt: 0, reserved: [{ kind: 'menu', x: 10, y: 10, w: 120, h: 44 }], timer: { left: 88, total: 150 }, tag: 'Watching · next round' });
   }
-  void fx;
 }
 
 // ------------------------------------------------------------------ entry
@@ -612,11 +611,11 @@ export async function runPoster(name, params) {
   r.resize(W, H, 1);
   if (name.startsWith('badge-')) badge(r.ctx, name.slice(6), Math.min(W, H));
   else if (name === 'cover') cover(r, fx, W, H);
-  else if (name === 'action') action(r, fx, W, H);
+  else if (name === 'action') action(r, fx);
   else if (name === 'win') win(r, fx, W, H);
-  else if (name === 'multi') multi(r, fx, W, H);
+  else if (name === 'multi') multi(r, fx);
   else if (name === 'icon') icon(r, W, H);
-  else if (name.startsWith('screen-')) await screen(name.slice(7), r, fx, W, H);
+  else if (name.startsWith('screen-')) await screen(name.slice(7), r, W, H);
   else throw new Error(`no poster "${name}"`);
   await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
   document.body.dataset.ready = '1';

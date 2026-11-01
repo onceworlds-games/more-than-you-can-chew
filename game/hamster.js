@@ -383,10 +383,6 @@ export function drawHamster(ctx, s) {
         ctx.lineTo(ex + 1.2, sy * eyeY);
         ctx.lineTo(ex - 2.2, sy * eyeY + 2);
       }
-      ctx.save();
-      ctx.translate(ex, sy * eyeY);
-      ctx.rotate(0);
-      ctx.restore();
       ctx.stroke();
     }
   } else {
@@ -427,25 +423,23 @@ export function drawHamster(ctx, s) {
     ctx.lineCap = 'round';
     const j = Math.sin(s.t * 20) * 1.2;
     for (const sy of [-1, 1]) {
-      const cy = sy * (cheekY + cheekR + 4 + j);
       ctx.beginPath();
       ctx.arc(cheekX + headBob, sy * cheekY, cheekR + 4.5 + j, sy > 0 ? 0.2 : -1.2, sy > 0 ? 1.2 : -0.2);
       ctx.stroke();
-      void cy;
     }
   }
   if (s.crown) {
     ctx.save();
     ctx.translate(headX - 2, 0);
     ctx.rotate(-s.a - (s.sway || 0));
-    drawCap(ctx, s.t);
+    drawCap(ctx);
     ctx.restore();
   }
   ctx.restore();
 }
 
 /** The leader's bottle-cap crown. */
-export function drawCap(ctx, t) {
+export function drawCap(ctx) {
   const r = 8;
   ctx.fillStyle = INK;
   ctx.beginPath();
@@ -473,5 +467,4 @@ export function drawCap(ctx, t) {
   ctx.beginPath();
   ctx.ellipse(-2.5, -6, 2.6, 1.3, -0.5, 0, Math.PI * 2);
   ctx.fill();
-  void t;
 }

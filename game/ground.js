@@ -52,7 +52,7 @@ export function drawGround(ctx, arena, rng) {
       stream(ctx, arena, rng);
       break;
     case 'dinner':
-      dinner(ctx, arena, rng);
+      dinner(ctx, arena);
       break;
     case 'farm':
       farm(ctx, arena, rng);
@@ -61,10 +61,10 @@ export function drawGround(ctx, arena, rng) {
       ctx.fillStyle = '#5E9E3F';
       ctx.fillRect(0, 0, arena.w, arena.h);
   }
-  for (const d of arena.decor || []) prop(ctx, d, rng, arena);
+  for (const d of arena.decor || []) prop(ctx, d, rng);
   // Shadows first, then the props, so no shadow falls over a neighbour's top.
   for (const o of arena.obstacles) if (o.prop !== 'water') shadowOf(ctx, o);
-  for (const o of arena.obstacles) if (o.prop !== 'water') prop(ctx, o, rng, arena);
+  for (const o of arena.obstacles) if (o.prop !== 'water') prop(ctx, o, rng);
   for (const b of arena.burrows) mound(ctx, b, rng, arena);
 }
 
@@ -372,7 +372,7 @@ function party(ctx, arena, rng) {
   ctx.setLineDash([]);
 }
 
-function dinner(ctx, arena, rng) {
+function dinner(ctx, arena) {
   ctx.fillStyle = '#8E3A3F';
   ctx.fillRect(0, 0, arena.w, arena.h);
   // A white linen cloth.
@@ -419,7 +419,6 @@ function dinner(ctx, arena, rng) {
     ctx.arc(px, py, 56, 0, Math.PI * 2);
     ctx.stroke();
   }
-  void rng;
 }
 
 function farm(ctx, arena, rng) {
@@ -599,7 +598,7 @@ function lightGrad(ctx, x, y, r, light, base, dark) {
   return g;
 }
 
-function prop(ctx, o, rng, arena) {
+function prop(ctx, o, rng) {
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -1196,7 +1195,6 @@ function prop(ctx, o, rng, arena) {
       break;
   }
   ctx.restore();
-  void arena;
 }
 
 /** A burrow's mound of hamster bedding (the hole itself is drawn live, so empty burrows stay closed). */

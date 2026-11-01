@@ -154,13 +154,13 @@ export function createRenderer(canvas, fx) {
       drawTosses(w);
       drawGoldens(w);
       drawPawBand(w);
-      drawFood(w, view, scene);
+      drawFood(w, view);
       if (A.dark) {
-        drawHamsterLayer(w, scene, dt, view, true);
+        drawHamsterLayer(w, scene, dt, view);
         drawNight(w, scene);
         drawGoldenGlow(w, view);
       } else {
-        drawHamsterLayer(w, scene, dt, view, false);
+        drawHamsterLayer(w, scene, dt, view);
       }
       drawLive(w);
       drawParts(ctx, fx, cam.z);
@@ -447,7 +447,7 @@ export function createRenderer(canvas, fx) {
     ctx.strokeStyle = '#F2D9A8';
     ctx.lineWidth = 2.4;
     ctx.stroke();
-    const label = scene.practice && mine ? String(shown) : String(shown);
+    const label = String(shown);
     ctx.font = `800 ${Math.round(17 * zs)}px "Bricolage Grotesque", system-ui, sans-serif`;
     const tw = Math.max(26 * zs, ctx.measureText(label).width + 16 * zs);
     const fh = 24 * zs;
@@ -656,7 +656,7 @@ export function createRenderer(canvas, fx) {
     } else ctx.drawImage(s.canvas, x - sz / 2, y - sz / 2, sz, sz);
   }
 
-  function drawFood(w, view, scene) {
+  function drawFood(w, view) {
     const t = w.t;
     const flying = [];
     for (const f of w.food.values()) {
@@ -711,7 +711,6 @@ export function createRenderer(canvas, fx) {
         }
       }
     }
-    void scene;
   }
 
   function onDiscBase(w, f) {
@@ -839,7 +838,7 @@ export function createRenderer(canvas, fx) {
     };
   }
 
-  function drawHamsterLayer(w, scene, dt, view, nightTint) {
+  function drawHamsterLayer(w, scene, dt, view) {
     const list = w.hams.filter((h) => !h.gone).slice().sort((p, q) => p.y - q.y);
     const meH = scene.me ? w.byId.get(scene.me) : null;
     const states = new Map();
@@ -870,7 +869,6 @@ export function createRenderer(canvas, fx) {
       if (h.x < view.x0 - 60 || h.x > view.x1 + 60 || h.y < view.y0 - 60 || h.y > view.y1 + 60) continue;
       drawHamster(ctx, states.get(h));
     }
-    void nightTint;
   }
 
   function drawNight(w, scene) {
