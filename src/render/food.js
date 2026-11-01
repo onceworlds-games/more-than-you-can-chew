@@ -127,8 +127,8 @@ const MAKE = {
     const holes = [];
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) holes.push([i * 0.42, j * 0.42]);
     colorize(g, (c, x, y, z) => {
-      c.copy(C('#d6a457'));
-      c.lerp(C('#b27a36'), Math.min(1, Math.max(0, (Math.max(Math.abs(x), Math.abs(z)) - 0.62) * 3)));
+      c.copy(C('#d8b072'));
+      c.lerp(C('#b48650'), Math.min(1, Math.max(0, (Math.max(Math.abs(x), Math.abs(z)) - 0.62) * 3)));
       if (y > 0.3) for (const [hx, hz] of holes) if ((x - hx) ** 2 + (z + hz) ** 2 < 0.006) c.copy(C('#7a4518'));
       c.lerp(C('#efc277'), Math.max(0, noise(x * 4, 0, z * 4)) * 0.3);
     });
@@ -198,10 +198,10 @@ const MAKE = {
       chips.push(colorize(ch, (c, x, y) => c.copy(C(y > top(r) + 0.05 ? '#5a3220' : '#3a1f12'))));
     }
     colorize(g, (c, x, y, z) => {
-      c.copy(C('#c08a52'));
-      c.lerp(C('#e4ba80'), Math.max(0, noise(x * 3, y, z * 3)) * 0.6);
+      c.copy(C('#b88d60'));
+      c.lerp(C('#dcbc8e'), Math.max(0, noise(x * 3, y, z * 3)) * 0.6);
       const r = Math.hypot(x, z);
-      if (r > 0.78) c.lerp(C('#9a5f30'), Math.min(1, (r - 0.78) * 3));
+      if (r > 0.78) c.lerp(C('#8f6440'), Math.min(1, (r - 0.78) * 3));
       if (y < 0.12) c.lerp(C('#8a5428'), 0.6);
     });
     const all = mergeGeometries([g.toNonIndexed(), ...chips.map((c) => c.toNonIndexed())]);

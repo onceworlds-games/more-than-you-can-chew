@@ -140,6 +140,9 @@ async function cover(W, H) {
   place(dot, 900, 420, 2.4, { fill: 10, dizzy: true });
   place(rocco, 950, 600, Math.PI - 0.35, { fill: 70, speed: 150 });
   place(bea, 800, 290, 1.4, { fill: 110 });
+  // Everyone else waddles in the back, out of the way.
+  place(byName(w, 'Clem'), 1090, 360, 2.2, { fill: 60 });
+  place(byName(w, 'Fig'), 1500, 200, 2.6, { fill: 20 });
   scatter(w, 760, 470, 300, 80, [SEED, SEED, SEED, NUT, NUT, BERRY, BERRY, CRACKER, STRAW], 3);
   scatter(w, 780, 700, 80, 10, [SEED, SEED, SEED, NUT], 9);
   scatter(w, 900, 420, 110, 18, [SEED, NUT, BERRY, CRACKER, COOKIE, STRAW], 4);
@@ -155,6 +158,7 @@ async function cover(W, H) {
   clearAround(w, 700, 440, 40);
   clearAround(w, 610, 610, 40);
   clearAround(w, 950, 600, 40);
+  clearAround(w, 1090, 360, 40);
   clearAround(w, 800, 290, 40);
   logo('tl');
   const view = { mode: 'fixed', x: 760, y: 560, dist: 3.9 };
@@ -295,7 +299,6 @@ async function icon(W, H) {
     [STRAW, x - 75, y + 20],
     [SEED, x + 58, y + 46],
     [BERRY, x + 80, y - 6],
-    [SEED, x - 30, y + 60],
     [COOKIE, x - 40, y - 140],
     [NUT, x + 130, y - 80],
   ])

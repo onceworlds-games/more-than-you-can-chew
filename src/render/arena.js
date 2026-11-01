@@ -151,17 +151,184 @@ function lemonadeGlass(r) {
   return g;
 }
 
+// Pantry jars: what's inside (a grain texture), a paper label, and a screw lid or a gingham cloth cap tied with twine.
+const JARS = [
+  { name: 'Lentils', base: '#d4722a', grain: ['#ef9a4c', '#b65a1b', '#e2853a', '#f5ad62'], kind: 'disc', cap: 'cloth', color: '#d8413a', fill: 0.62 },
+  { name: 'Oats', base: '#dcc796', grain: ['#f3e5bf', '#c7ad74', '#fff3d6', '#b89a5e'], kind: 'flake', cap: 'lid', color: '#3fa7f2', fill: 0.78 },
+  { name: 'Coffee', base: '#3a1e0e', grain: ['#6b3a1f', '#4c2812', '#7d4a28', '#2a1508'], kind: 'bean', cap: 'cloth', color: '#2e3f9e', fill: 0.7 },
+  { name: 'Peas', base: '#7f9e33', grain: ['#a6c552', '#6c8a26', '#b8d466', '#93b343'], kind: 'pea', cap: 'lid', color: '#5e9e3f', fill: 0.56 },
+];
+const jarTex = new Map();
+function jarTextures(v) {
+  if (jarTex.has(v)) return jarTex.get(v);
+  const J = JARS[v];
+  let seed = 7 + v * 31;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // What's inside.
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = J.base;
+  x.fillRect(0, 0, 256, 256);
+  const n = J.kind === 'flake' ? 700 : J.kind === 'pea' ? 260 : 520;
+  for (let i = 0; i < n; i++) {
+    const px = rnd() * 256;
+    const py = rnd() * 256;
+    const a = rnd() * Math.PI;
+    const col = J.grain[Math.floor(rnd() * J.grain.length)];
+    for (const ox of [0, -256, 256]) {
+      x.save();
+      x.translate(px + ox, py);
+      x.rotate(a);
+      x.fillStyle = 'rgba(0,0,0,0.28)';
+      const [rw, rh] = J.kind === 'flake' ? [9, 5] : J.kind === 'pea' ? [8, 8] : J.kind === 'bean' ? [9, 6.5] : [7.5, 6];
+      x.beginPath();
+      x.ellipse(1.2, 1.6, rw, rh, 0, 0, Math.PI * 2);
+      x.fill();
+      x.fillStyle = col;
+      x.beginPath();
+      x.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+      x.fill();
+      if (J.kind === 'bean') {
+        x.strokeStyle = 'rgba(20,8,2,0.75)';
+        x.lineWidth = 1.4;
+        x.beginPath();
+        x.moveTo(-rw * 0.7, 0);
+        x.quadraticCurveTo(0, rh * 0.35, rw * 0.7, 0);
+        x.stroke();
+      } else {
+        x.fillStyle = 'rgba(255,255,255,0.35)';
+        x.beginPath();
+        x.ellipse(-rw * 0.3, -rh * 0.35, rw * 0.35, rh * 0.25, 0, 0, Math.PI * 2);
+        x.fill();
+      }
+      x.restore();
+    }
+  }
+  const grain = new THREE.CanvasTexture(c);
+  grain.colorSpace = THREE.SRGBColorSpace;
+  grain.wrapS = grain.wrapT = THREE.RepeatWrapping;
+  grain.repeat.set(2.4, 1.3);
+  // The label.
+  const l = document.createElement('canvas');
+  l.width = 512;
+  l.height = 200;
+  const y = l.getContext('2d');
+  y.fillStyle = '#f6ecd4';
+  y.fillRect(0, 0, 512, 200);
+  y.strokeStyle = J.color;
+  y.lineWidth = 10;
+  y.strokeRect(14, 14, 484, 172);
+  y.lineWidth = 3;
+  y.strokeRect(30, 30, 452, 140);
+  y.fillStyle = J.color;
+  y.font = "bold 74px 'Shrikhand', Georgia, serif";
+  y.textAlign = 'center';
+  y.textBaseline = 'middle';
+  y.fillText(J.name, 256, 96);
+  y.fillStyle = 'rgba(59,34,24,0.55)';
+  for (const [cx, w] of [[256, 220]]) y.fillRect(cx - w / 2, 142, w, 4);
+  const label = new THREE.CanvasTexture(l);
+  label.colorSpace = THREE.SRGBColorSpace;
+  // A gingham cloth for the caps.
+  const g = document.createElement('canvas');
+  g.width = g.height = 64;
+  const z = g.getContext('2d');
+  z.fillStyle = '#fff7ea';
+  z.fillRect(0, 0, 64, 64);
+  z.fillStyle = J.color;
+  z.globalAlpha = 0.55;
+  z.fillRect(0, 0, 32, 64);
+  z.fillRect(0, 0, 64, 32);
+  z.globalAlpha = 1;
+  z.fillRect(0, 0, 32, 32);
+  const cloth = new THREE.CanvasTexture(g);
+  cloth.colorSpace = THREE.SRGBColorSpace;
+  cloth.wrapS = cloth.wrapT = THREE.RepeatWrapping;
+  cloth.repeat.set(4, 4);
+  const t = { grain, label, cloth };
+  jarTex.set(v, t);
+  return t;
+}
+
 function jar(r, v = 0) {
+  v = ((v % JARS.length) + JARS.length) % JARS.length;
+  const J = JARS[v];
+  const T = jarTextures(v);
   const g = new THREE.Group();
-  const h = r * 2.4;
-  const fills = ['#e38b2c', '#f2e6c4', '#6b3a1f', '#c9d36a'];
-  const glass = mesh(new THREE.CylinderGeometry(r, r, h, 32, 1, true), phys({ color: '#eaf6ff', roughness: 0.05, transparent: true, opacity: 0.3, clearcoat: 1, side: THREE.DoubleSide }), false);
-  glass.position.y = h / 2;
-  const fill = mesh(new THREE.CylinderGeometry(r * 0.95, r * 0.95, h * (0.55 + (v % 3) * 0.12), 32), std(fills[v % fills.length], { roughness: 0.95 }));
-  fill.position.y = (h * (0.55 + (v % 3) * 0.12)) / 2;
-  const lid = mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, r * 0.32, 32), std(['#d8413a', '#3fa7f2', '#e3a24f', '#5e9e3f'][v % 4], { roughness: 0.4, metalness: 0.2 }));
-  lid.position.y = h + r * 0.14;
-  g.add(fill, glass, lid);
+  const h = r * 2.3;
+  // Glass: a rounded base, straight sides, shoulders and a short neck.
+  const prof = [
+    [0.001, 0],
+    [r * 0.86, 0],
+    [r * 0.97, r * 0.04],
+    [r, r * 0.14],
+    [r, h * 0.8],
+    [r * 0.97, h * 0.86],
+    [r * 0.88, h * 0.9],
+    [r * 0.86, h * 0.97],
+  ].map(([a, b]) => new THREE.Vector2(a, b));
+  const glass = mesh(
+    new THREE.LatheGeometry(prof, 48),
+    phys({ color: '#eef8ff', roughness: 0.04, transparent: true, opacity: 0.26, clearcoat: 1, clearcoatRoughness: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+    false,
+  );
+  glass.renderOrder = 2;
+  // What's inside, to its level, with a heaped top.
+  const fh = h * J.fill;
+  const fill = mesh(new THREE.CylinderGeometry(r * 0.94, r * 0.9, fh, 40, 1, false), std('#ffffff', { map: T.grain, roughness: 0.92 }));
+  fill.position.y = fh / 2 + r * 0.04;
+  const mound = mesh(new THREE.SphereGeometry(r * 0.94, 32, 10, 0, Math.PI * 2, 0, Math.PI / 2), std('#ffffff', { map: T.grain, roughness: 0.92 }), false);
+  mound.scale.y = 0.18;
+  mound.position.y = fh + r * 0.04;
+  // The label, facing the camera.
+  const label = mesh(new THREE.CylinderGeometry(r * 1.006, r * 1.006, h * 0.3, 32, 1, true, -1.15, 2.3), std('#ffffff', { map: T.label, roughness: 0.85 }), false);
+  label.position.y = h * 0.42;
+  g.add(fill, mound, label, glass);
+  const top = h * 0.9;
+  if (J.cap === 'lid') {
+    // A screw lid: knurled sides and a domed top.
+    const lm = std(J.color, { roughness: 0.32, metalness: 0.35, flatShading: true });
+    const side = mesh(new THREE.CylinderGeometry(r * 0.93, r * 0.93, r * 0.3, 36), lm);
+    side.position.y = top + r * 0.15;
+    const cap = mesh(new THREE.SphereGeometry(r * 0.93, 36, 8, 0, Math.PI * 2, 0, Math.PI / 2), std(J.color, { roughness: 0.28, metalness: 0.35 }));
+    cap.scale.y = 0.12;
+    cap.position.y = top + r * 0.3;
+    g.add(side, cap);
+  } else {
+    // A cloth cap: a disc of gingham draped over the neck, with folds at the hem, tied with twine.
+    const cg = new THREE.CircleGeometry(r * 1.45, 64, 0, Math.PI * 2);
+    cg.rotateX(-Math.PI / 2);
+    const p = cg.attributes.position;
+    const flat = r * 0.9;
+    for (let i = 0; i < p.count; i++) {
+      const px = p.getX(i);
+      const pz = p.getZ(i);
+      const d = Math.hypot(px, pz);
+      const a = Math.atan2(pz, px);
+      let y = r * 0.2 - (d / flat) ** 2 * r * 0.03;
+      let rr = d;
+      if (d > flat) {
+        // Puffed over the lid, pinched by the twine, then flaring into a folded hem.
+        const k = d - flat;
+        const pinch = r * 0.2;
+        y = r * 0.17 - k * 1.05;
+        if (k <= pinch) rr = flat + r * 0.07 * Math.sin((Math.PI * k) / pinch) + k * 0.12;
+        else rr = flat + pinch * 0.12 + (k - pinch) * 0.55 + Math.sin(a * 9) * (k - pinch) * 0.15;
+        y += Math.cos(a * 9) * Math.max(0, k - pinch) * 0.25;
+      }
+      p.setXYZ(i, d > 0 ? (px / d) * rr : 0, y, d > 0 ? (pz / d) * rr : 0);
+    }
+    cg.computeVertexNormals();
+    const cloth = mesh(cg, std('#ffffff', { map: T.cloth, roughness: 0.9, side: THREE.DoubleSide }));
+    cloth.position.y = top;
+    const twine = mesh(new THREE.TorusGeometry(r * 0.94, r * 0.026, 8, 48), std('#c9a46a', { roughness: 0.95 }));
+    twine.rotation.x = Math.PI / 2;
+    twine.position.y = top - r * 0.04;
+    const bow = mesh(new THREE.TorusGeometry(r * 0.1, r * 0.024, 6, 16), std('#c9a46a', { roughness: 0.95 }));
+    bow.position.set(0, top - r * 0.04, r * 0.97);
+    g.add(cloth, twine, bow);
+  }
   return g;
 }
 

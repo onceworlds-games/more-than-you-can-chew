@@ -16,9 +16,12 @@ Play: https://onceworlds.com/play/more-than-you-can-chew
 
 ```sh
 npm install
-npm run dev      # http://localhost:5173 (dev only: ?autoplay=1 plays itself, ?lab=hams shows the hamsters up close)
+npm run dev      # http://localhost:5173
 npm run build    # dist/, what the platform serves
 ```
+
+Dev-only addresses: `?autoplay=1` plays itself (add `solo=picnic:4`, `solo=daily` or `solo=wardrobe` to go straight
+there, `brain=gambler` for a playing style), `?lab=hams` shows the hamsters up close, `?poster=cover` draws a store picture.
 
 ## Tests
 

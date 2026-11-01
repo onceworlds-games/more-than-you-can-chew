@@ -4,6 +4,7 @@
 
 import { createWorld3d } from './render/world3d.js';
 import { U } from './render/stage.js';
+import { loadsPending } from './render/assets.js';
 import { createHud } from './hud.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
@@ -248,12 +249,15 @@ export async function boot() {
       store,
       world,
       startSolo: (i) => startSolo(i),
+      loads: () => loadsPending(),
       auto: (w, me) => {
-        if (!S.autoBrain || S.autoBrain.w !== w) S.autoBrain = { w, b: createBrain(me, w, { skill: 0.9, kind: 'plain', seed: 'auto' }) };
+        if (!S.autoBrain || S.autoBrain.w !== w) S.autoBrain = { w, b: createBrain(me, w, { skill: 0.9, kind: params.get('brain') || 'plain', seed: 'auto' }) };
         return S.autoBrain.b.think(w, me, 1 / 60) || { mx: 0, my: 0, dash: false };
       },
     };
   }
+  // Capture: `zoom=0.7` brings the follow camera closer (dev only; a director can change __chew.S.zoom as it plays).
+  if (dev && params.get('zoom')) S.zoom = Number(params.get('zoom')) || 1;
   const localSettings = { arena: 0, rounds: 1, bots: 'normal' };
   const settings = () => (S.net ? S.net.settings() : readSettings(localSettings));
 
@@ -1014,7 +1018,7 @@ export async function boot() {
 
   function myInput(w, me) {
     if (autoplay && me) {
-      if (!S.autoBrain || S.autoBrain.w !== w) S.autoBrain = { w, b: createBrain(me, w, { skill: 0.9, kind: 'plain', seed: 'auto' }) };
+      if (!S.autoBrain || S.autoBrain.w !== w) S.autoBrain = { w, b: createBrain(me, w, { skill: 0.9, kind: params.get('brain') || 'plain', seed: 'auto' }) };
       const i = S.autoBrain.b.think(w, me, 1 / 60);
       return i || { mx: 0, my: 0, dash: false };
     }
@@ -1109,7 +1113,25 @@ export async function boot() {
       audio.music('menu');
       audio.strain(0);
     }
-    if (autoplay && S.screen === 'title' && now > 1200) play();
+    if (autoplay && S.screen === 'title' && now > 1200 && (params.get('wait') !== '1' || window.__go)) {
+      // Capture: `solo=picnic:N | daily | quick | wardrobe` goes there without readying in the room; `xp=` sets the XP;
+      // `wait=1` holds the title until the capture sets `window.__go`.
+      const solo = params.get('solo');
+      if (!solo) play();
+      else {
+        const p = P();
+        if (params.get('xp')) p.xp = Number(params.get('xp')) || 0;
+        if (params.get('hints') === '0') p.hints = new Proxy({}, { get: () => true });
+        S.screen = 'lobby';
+        world.camReady = false;
+        const [kind, n] = solo.split(':');
+        if (kind === 'picnic') {
+          for (let i = 0; i < Number(n); i++) p.picnics.won[i] = true;
+          startSolo({ kind, n: Number(n) });
+        } else if (kind === 'wardrobe') handlers.wardrobe();
+        else startSolo({ kind });
+      }
+    }
     if (autoplay && S.screen === 'lobby' && now > 2400 && !S.net && params.get('stay') !== '1') startSolo({ kind: params.get('mode') === 'daily' ? 'daily' : 'quick' });
 
     let w;
@@ -1321,7 +1343,7 @@ export async function boot() {
     const tgt = S.camTarget && w && w.byId.get(S.camTarget.id) ? S.camTarget : null;
     const touch = !!(ow && ow.controls && ow.controls.touch);
     if (view.mode === 'follow') {
-      if (tgt) view = { mode: 'follow', x: tgt.x, y: tgt.y + (touch && world.vh > world.vw ? 60 : 0), vx: tgt.vx || 0, vy: tgt.vy || 0 };
+      if (tgt) view = { mode: 'follow', x: tgt.x, y: tgt.y + (touch && world.vh > world.vw ? 60 : 0), vx: tgt.vx || 0, vy: tgt.vy || 0, zoom: S.zoom || 1 };
       else view = { mode: 'overview' };
     }
     world.camera(w, view, dt);

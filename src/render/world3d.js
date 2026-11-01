@@ -480,6 +480,13 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
       scene.add(d);
       porches.push(d);
     });
+    // Compile every material now, hidden ones too (the paw, the golden shaft, effects), so a first swat or pop never stalls.
+    try {
+      const r = stage.renderer.compileAsync(scene, stage.camera);
+      if (r && r.catch) r.catch(() => {});
+    } catch {
+      /* best effort */
+    }
   }
 
   function hamFor(h) {
