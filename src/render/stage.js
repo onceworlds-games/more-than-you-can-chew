@@ -284,7 +284,7 @@ export function createRig(stage) {
   const look = new THREE.Vector3();
   /**
    * o: { mode: 'follow' | 'drift' | 'overview' | 'fixed', x, z (target), vx, vz, dist, arena: { w, h } (world units),
-   *      pitch, lift (fixed only: a lower angle and a raised aim, for showing off one hamster) }
+   *      pitch, lift (fixed and follow: a lower angle and a raised aim, for showing off one hamster) }
    */
   rig.update = (o, dt) => {
     rig.t += dt;
@@ -318,6 +318,8 @@ export function createRig(stage) {
       tx = o.x;
       tz = o.z;
       dist = o.dist;
+    }
+    if (o.mode === 'fixed' || o.mode === 'follow') {
       if (o.pitch) dipTo = o.pitch - rig.pitch;
       if (o.lift) liftTo = o.lift;
     }

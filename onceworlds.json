@@ -20,7 +20,7 @@
     { "keys": ["Bump"], "action": "Bump (touch)" },
     { "keys": ["Space", "Enter"], "action": "Play" },
     { "keys": ["Esc"], "action": "Pause a Picnic or the Daily" },
-    { "keys": ["Wardrobe"], "action": "Wear hats, coats and effects you've earned" }
+    { "keys": ["Wardrobe"], "action": "Wear hats and coats you've earned" }
   ],
   "badges": [
     { "id": "first-bite", "name": "First Bite", "description": "Bank your first food.", "icon": "store/badge-first-bite.png" },

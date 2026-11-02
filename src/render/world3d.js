@@ -692,9 +692,9 @@ export function createWorld3d(canvas, { preserve = false } = {}) {
         o.x = view.x * U;
         o.z = view.y * U;
         o.dist = view.dist;
-        o.pitch = view.pitch;
-        o.lift = view.lift;
       }
+      o.pitch = view.pitch;
+      o.lift = view.lift;
       if (view.snap) rig.ready = false;
       rig.update(o, dt);
     },

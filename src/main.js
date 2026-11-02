@@ -262,7 +262,8 @@ export async function boot() {
       },
     };
   }
-  // Capture: `zoom=0.7` brings the follow camera closer (dev only; a director can change __chew.S.zoom as it plays).
+  // Capture: `zoom=0.7` brings the follow camera closer (dev only; a director can change __chew.S.zoom, and S.pitch and S.lift
+  // for a low hero angle, as it plays).
   if (dev && params.get('zoom')) S.zoom = Number(params.get('zoom')) || 1;
   const localSettings = { arena: 0, rounds: 1, bots: 'normal' };
   const settings = () => (S.net ? S.net.settings() : readSettings(localSettings));
@@ -1373,15 +1374,19 @@ export async function boot() {
     const tgt = S.camTarget && w && w.byId.get(S.camTarget.id) ? S.camTarget : null;
     const touch = !!(ow && ow.controls && ow.controls.touch);
     if (view.mode === 'follow') {
-      if (tgt) view = { mode: 'follow', x: tgt.x, y: tgt.y + (touch && world.vh > world.vw ? 60 : 0), vx: tgt.vx || 0, vy: tgt.vy || 0, zoom: S.zoom || 1 };
+      if (tgt) view = { mode: 'follow', x: tgt.x, y: tgt.y + (touch && world.vh > world.vw ? 60 : 0), vx: tgt.vx || 0, vy: tgt.vy || 0, zoom: S.zoom || 1, pitch: S.pitch, lift: S.lift };
       else view = { mode: 'overview' };
+      // Capture (dev only): a director can point the camera somewhere else for a moment.
+      if (dev && S.look && view.mode === 'follow') view = { ...view, x: S.look.x, y: S.look.y, vx: 0, vy: 0 };
     }
     world.camera(w, view, dt);
     const leader = w.leader ? w.leader() : null;
     const leaderId = leader && !practice && S.screen !== 'title' ? leader.id : null;
     world.draw({ w, me: S.watch && !meId ? null : meId, leader: leaderId, practice, dt: gdt, noRing: !showRing });
-    if (tags) hudView.tags = tagsFor(w, S.watch && !meId ? null : meId, leaderId);
-    if (meId && showRing && !practice) hudView.me = meBadge(w, w.byId.get(meId));
+    // A capture's low hero camera (dev only) leaves out the floating tags: from down there they'd stack under the timer.
+    const hero = dev && S.pitch;
+    if (tags && !hero) hudView.tags = tagsFor(w, S.watch && !meId ? null : meId, leaderId);
+    if (meId && showRing && !practice && !hero) hudView.me = meBadge(w, w.byId.get(meId));
     if (S.hint && meId) {
       const me = w.byId.get(meId);
       if (me) hudView.hint = { ...S.hint, x: me.x, y: me.y };

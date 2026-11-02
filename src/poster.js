@@ -191,6 +191,7 @@ async function action(W, H) {
   const bea = byName(w, 'Bea');
   const gus = byName(w, 'Gus');
   place(dot, cx, cy, 2.6, { fill: 0 });
+  dot.coat = 5; // cinnamon: a pale coat would vanish in the pop's flash
   place(pepper, cx - 70, cy + 40, -0.45, { dash: true, speed: 300, fill: 26 });
   place(bea, cx + 190, cy - 90, Math.PI - 0.6, { fill: 96 });
   place(gus, cx - 230, cy - 120, 0.2, { fill: 60, speed: 220 });
@@ -204,7 +205,7 @@ async function action(W, H) {
   const view = { mode: 'fixed', x: cx - 20, y: cy - 30, dist: 3.5 };
   await finish(world, w, view, {
     each: (i, n) => {
-      if (i === n - 10) {
+      if (i === n - 12) {
         world.pop(dot.id);
         world.hit(pepper.id);
         const x = cx * U;
