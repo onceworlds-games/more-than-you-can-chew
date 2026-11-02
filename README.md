@@ -21,7 +21,9 @@ npm run build    # dist/, what the platform serves
 ```
 
 Dev-only addresses: `?autoplay=1` plays itself (add `solo=picnic:4`, `solo=daily` or `solo=wardrobe` to go straight
-there, `brain=gambler` for a playing style), `?lab=hams` shows the hamsters up close, `?poster=cover` draws a store picture.
+there, `brain=gambler` for a playing style, `skip=30` to jump 30 s into the round, `zoom=0.6` for a closer camera; a capture
+director can also set `__chew.S.pitch`, `S.lift` and `S.look` for low hero shots), `?lab=hams` shows the hamsters up close,
+`?poster=cover` draws a store picture.
 
 ## Tests
 
