@@ -58,7 +58,7 @@ export const DASH = {
 
 export const PAW = { count: 5, from: 122, gap: 6, band: 190, shadow: 1.4, swat: 0.45, kb: 220, stun: 0.6, spill: 0.5, flingMin: 120, flingMax: 280, reach: 80 };
 
-export const ROUND = { seconds: 150, intro: 4, end: 7, results: 30 };
+export const ROUND = { seconds: 150, intro: 1.1, end: 7, results: 12 };
 
 export const SCHEDULE = {
   opening: 140,

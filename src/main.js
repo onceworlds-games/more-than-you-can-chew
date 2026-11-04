@@ -85,7 +85,7 @@ export async function boot() {
   }
 
   const S = {
-    screen: 'title',
+    screen: 'lobby',
     attract: null,
     practice: null,
     practiceKey: '',
@@ -150,7 +150,17 @@ export async function boot() {
   try {
     if (ow && ow.ui) {
       reserved = ow.ui.reserved || null;
-      ow.on('reserved', (r) => (reserved = r));
+      // The screens end above the platform's strip while it's up.
+      const strip = () => {
+        const r = (reserved || []).find((x) => x.kind === 'lobby');
+        document.documentElement.style.setProperty('--strip', `${r ? Math.max(0, innerHeight - r.y) : 0}px`);
+      };
+      strip();
+      ow.on('reserved', (r) => {
+        reserved = r;
+        strip();
+      });
+      addEventListener('resize', strip);
     }
     if (ow && ow.settings && ow.settings.on) {
       reduced = !!ow.settings.reducedMotion;
@@ -196,7 +206,6 @@ export async function boot() {
       if (act === 'noop' || act === 'closeSheet') return;
       audio.play(['arena', 'rounds', 'bots', 'plate', 'tab', 'wear'].includes(act) ? 'soft' : 'crunch');
     },
-    play: () => play(),
     arena: (d) => {
       const s = settings();
       const open = ARENAS.map((a) => a.id).filter((i) => picnicOpen(P(), i));
@@ -237,8 +246,6 @@ export async function boot() {
     lobby: () => backToLobby(),
     again: () => startSolo(S.soloInfo),
     nextPicnic: () => startSolo({ kind: 'picnic', n: Math.min(7, S.soloInfo.n + 1) }),
-    skip: () => S.net && S.net.skip(),
-    next: () => S.net && S.net.skip(),
     resume: () => setPaused(false),
     quit: () => {
       setPaused(false);
@@ -360,28 +367,12 @@ export async function boot() {
   }
   newAttract();
 
-  const titleView = () => {
-    const p = P();
-    return { best: p.bests.round > 0 ? fmt(p.bests.round) : '', keys: !(ow && ow.controls && ow.controls.touch), level: levelOf(p.xp).level, streak: liveStreak(p, today()) };
-  };
-
-  function play() {
-    audio.unlock();
-    audio.music('menu');
-    S.screen = 'lobby';
-    S.pick = P().coat;
-    world.camReady = false;
-    // In a public server, Play is your Ready (a lone player starts at once).
-    if (S.net && room && room.kind === 'public' && room.match.phase === 'lobby') S.net.ready(true);
-  }
-
+  // Sound waits for the first touch or key on this page (Ready is pressed on the platform's).
+  audio.music('menu');
+  addEventListener('keydown', () => audio.unlock()); // any key: the click on the platform's Ready can't start sound in this frame
   input.onKeyDown((e) => {
-    if (S.screen === 'title' && (e.code === 'Space' || e.code === 'Enter')) {
-      e.preventDefault();
-      audio.unlock();
-      audio.play('crunch');
-      play();
-    } else if (e.code === 'Escape' && S.sheet) S.sheet = null;
+    audio.unlock();
+    if (e.code === 'Escape' && S.sheet) S.sheet = null;
     else if (e.code === 'Escape' && S.screen === 'wardrobe') backToLobby();
     else if (e.code === 'Escape' && S.solo && S.screen === 'solo' && S.solo.phase !== 'end') setPaused(!S.paused);
     else if (S.watch !== null && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) cycleWatch(e.code === 'ArrowLeft' ? -1 : 1);
@@ -449,14 +440,6 @@ export async function boot() {
     world.camReady = false;
     audio.music('play');
     S.autoBrain = null;
-  }
-
-  function hideLobby(on) {
-    try {
-      if (room && room.hideLobby) room.hideLobby(on);
-    } catch {
-      /* fine */
-    }
   }
 
   function backToLobby() {
@@ -1032,17 +1015,6 @@ export async function boot() {
     return input.read(me);
   }
 
-  let stripKey = '';
-  /** The platform's Ready strip: off where Ready makes no sense (the title, Picnics, the Daily, a solo round). */
-  function syncStrip() {
-    if (!room || !room.match) return;
-    const hide = ['title', 'picnics', 'daily', 'solo', 'soloResults', 'wardrobe'].includes(S.screen);
-    const key = `${hide}|${room.match.id}|${room.match.phase}`;
-    if (key === stripKey) return;
-    stripKey = key;
-    hideLobby(hide);
-  }
-
   /** Name tags (projected over each head). */
   function tagsFor(w, meId, leaderId) {
     const out = [];
@@ -1107,7 +1079,7 @@ export async function boot() {
     }
 
     // A match takes its players out of whatever they were doing; someone watching it only sees it from the lobby.
-    const pulled = room && !room.spectating ? ['title', 'lobby', 'picnics', 'daily', 'solo', 'soloResults', 'wardrobe'] : ['lobby'];
+    const pulled = room && !room.spectating ? ['lobby', 'picnics', 'daily', 'solo', 'soloResults', 'wardrobe'] : ['lobby'];
     if (S.net && onlineActive() && pulled.includes(S.screen)) {
       S.solo = null;
       S.paused = false;
@@ -1123,12 +1095,12 @@ export async function boot() {
       audio.music('menu');
       audio.strain(0);
     }
-    if (autoplay && S.screen === 'title' && now > 1200 && (params.get('wait') !== '1' || window.__go)) {
+    if (autoplay && !S.autoStarted && now > 1200 && (params.get('wait') !== '1' || window.__go)) {
       // Capture: `solo=picnic:N | daily | quick | wardrobe` goes there without readying in the room; `xp=` sets the XP;
-      // `wait=1` holds the title until the capture sets `window.__go`.
+      // `wait=1` holds the lobby until the capture sets `window.__go`.
+      S.autoStarted = true;
       const solo = params.get('solo');
-      if (!solo) play();
-      else {
+      if (solo) {
         const p = P();
         if (params.get('xp')) p.xp = Number(params.get('xp')) || 0;
         if (params.get('hints') === '0') p.hints = new Proxy({}, { get: () => true });
@@ -1159,7 +1131,7 @@ export async function boot() {
     let tags = true;
     let practice = false;
 
-    if (S.screen === 'title' || (S.screen === 'closed' && !S.solo && !onlineActive())) {
+    if (S.screen === 'closed' && !S.solo && !onlineActive()) {
       const s = S.attract;
       s.step(gdt);
       for (const e of s.w.drain()) juice(e, s.w, null);
@@ -1169,8 +1141,8 @@ export async function boot() {
       showRing = false;
       tags = false;
       setControls(false);
-      setFlow(S.screen === 'closed' ? 'closed' : 'title');
-      ui.render(S.screen === 'closed' ? 'closed' : 'title', S.screen === 'closed' ? S.closed : titleView());
+      setFlow('closed');
+      ui.render('closed', S.closed);
     } else if (S.screen === 'match' && !S.net.world) {
       // The round's world comes with the host's round data: the blanket keeps moving until then.
       S.net.frame(gdt, null);
@@ -1199,12 +1171,13 @@ export async function boot() {
         scheduleBeats(w, t0, w.t, meId);
         playHints(w, me);
       }
-      // Phase changes: the intro's banner, EAT!, the buzzer.
+      // Phase changes: EAT! (play begins as the room's countdown ends), the buzzer.
       const pk = `${net.roundKey}:${ph}`;
       if (pk !== S.phaseSeen) {
-        const prev = S.phaseSeen.split(':').pop();
         S.phaseSeen = pk;
-        if (ph === 'intro') {
+        if (ph === 'round') {
+          // Ready was pressed on the platform's page: try for the sound now (the first key or touch makes sure of it).
+          audio.unlock();
           audio.music('play');
           S.ateAt = 0;
           S.lastSec = -1;
@@ -1215,10 +1188,11 @@ export async function boot() {
             S.matchLines = [];
             S.matchSummary = null;
           }
-        }
-        if (ph === 'round' && prev === 'intro') {
-          S.big = { kind: 'word', text: 'EAT!', t: 0, life: 0.9, color: '#FFCB2E' };
-          audio.play('eat');
+          // (not for a page that reloads into a round under way)
+          if ((m.elapsed ?? 0) < 1500) {
+            S.big = m.round > 1 ? { kind: 'banner', text: `Round ${m.round}`, sub: `of ${m.rounds}`, t: 0, life: 1.1 } : { kind: 'word', text: 'EAT!', t: 0, life: 0.9, color: '#FFCB2E' };
+            audio.play('eat');
+          }
         }
         if (ph === 'roundEnd') {
           S.big = { kind: 'word', text: 'Time!', t: 0, life: 1.1 };
@@ -1233,13 +1207,8 @@ export async function boot() {
       if (room && room.spectating) {
         if (!S.watch || !w.byId.get(S.watch)) S.watch = w.leader() ? w.leader().id : w.hams[0] && w.hams[0].id;
       } else S.watch = null;
-      const playing = (ph === 'round' || ph === 'intro') && !!me;
+      const playing = ph === 'round' && !!me;
       setControls(ph === 'round' && !!me);
-      if (ph === 'intro') {
-        const introT = ROUND.intro - (m.secondsLeft ?? 0);
-        introBig(introT, `Round ${m.round}`, m.rounds > 1 ? `of ${m.rounds}` : w.arena.twist);
-        hudView.timer = { left: ROUND.seconds, total: ROUND.seconds };
-      }
       if (ph === 'round') {
         hudView.timer = { left: m.secondsLeft ?? 0, total: ROUND.seconds };
         if (me) hudView.place = placeOf(w, me);
@@ -1252,7 +1221,7 @@ export async function boot() {
         showRing = false;
         tags = false;
       }
-      if (S.watch && (ph === 'round' || ph === 'intro')) hudView.tag = 'Watching · next round';
+      if (S.watch && ph === 'round') hudView.tag = 'Watching · next round';
       if (ph === 'roundEnd') ui.render(S.big && S.big.text === 'Time!' ? 'none' : 'board', boardView(net, w));
       else if (ph === 'results') ui.render('results', resultsView(net, w));
       else ui.render('none');
@@ -1368,8 +1337,6 @@ export async function boot() {
       }
     }
 
-    syncStrip();
-
     // Camera and drawing.
     const tgt = S.camTarget && w && w.byId.get(S.camTarget.id) ? S.camTarget : null;
     const touch = !!(ow && ow.controls && ow.controls.touch);
@@ -1381,7 +1348,7 @@ export async function boot() {
     }
     world.camera(w, view, dt);
     const leader = w.leader ? w.leader() : null;
-    const leaderId = leader && !practice && S.screen !== 'title' ? leader.id : null;
+    const leaderId = leader && !practice ? leader.id : null;
     world.draw({ w, me: S.watch && !meId ? null : meId, leader: leaderId, practice, dt: gdt, noRing: !showRing });
     // A capture's low hero camera (dev only) leaves out the floating tags: from down there they'd stack under the timer.
     const hero = dev && S.pitch;
@@ -1407,17 +1374,7 @@ export async function boot() {
   }
 
   function introBig(introT, title, sub) {
-    if (introT < 1.1) S.big = { kind: 'banner', text: title, sub, t: introT, life: 1.1, fixed: true };
-    else {
-      const n = 3 - Math.floor(introT - 1.1);
-      if (n >= 1 && n <= 3) {
-        const key = `n${n}`;
-        if (!S.big || S.big.key !== key) {
-          S.big = { kind: 'word', text: String(n), t: (introT - 1.1) % 1, life: 1, key };
-          audio.play('count', { n });
-        }
-      }
-    }
+    S.big = { kind: 'banner', text: title, sub, t: introT, life: ROUND.intro, fixed: true };
   }
 
   function bigView(b) {
@@ -1502,7 +1459,7 @@ export async function boot() {
     for (const pl of players) {
       if (pl.me) mySeat = seats.length;
       const o = pl.me ? myOutfit() : outfitOf(pl.id);
-      seats.push({ name: pl.me ? 'You' : pl.name, ready: !!pl.ready, host: !!pl.host, me: !!pl.me, coat: pl.me ? p.coat : coatOf(pl.id), hat: o.hat, seat: seats.length });
+      seats.push({ name: pl.me ? 'You' : pl.name, host: !!pl.host, me: !!pl.me, coat: pl.me ? p.coat : coatOf(pl.id), hat: o.hat, seat: seats.length });
     }
     const nb = s.bots === 'off' ? 0 : 8 - seats.length;
     for (let i = 0; i < nb && seats.length < 8; i++) seats.push({ name: BOTS[i].name, coat: BOTS[i].coat, hat: BOT_OUTFITS[BOTS[i].name]?.hat || '', seat: seats.length });
@@ -1631,7 +1588,7 @@ export async function boot() {
       r.place = place;
     });
     const bw = Math.min(460, world.vw - 24);
-    return { title: m.rounds > 1 ? `Round ${m.round} of ${m.rounds}` : 'Round over', rows, why: reasonLine(w, rows), next: '', canSkip: m.isHost, top: clearTop((world.vw - bw) / 2), summary: S.matchSummary };
+    return { title: m.rounds > 1 ? `Round ${m.round} of ${m.rounds}` : 'Round over', rows, why: reasonLine(w, rows), next: '', top: clearTop((world.vw - bw) / 2), summary: S.matchSummary };
   }
 
   function resultsView(net, w) {
@@ -1647,7 +1604,7 @@ export async function boot() {
     if (mine) lines.push({ text: `Total ${fmt(mine.points)}` });
     if (mine && mine.place === 1 && S.matchPops === 0) lines.push({ text: 'Never popped!', best: true });
     lines.push(...S.matchLines.slice(0, 3));
-    return { podium, myPlace: mine ? mine.place : 0, headline: 'Results', lines, canNext: m.isHost, next: '', summary: S.matchSummary };
+    return { podium, myPlace: mine ? mine.place : 0, headline: 'Results', lines, next: '', summary: S.matchSummary };
   }
 
   requestAnimationFrame(frame);

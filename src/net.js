@@ -16,7 +16,6 @@ export const JOIN = {
   maxPlayers: 8,
   minPlayers: 1,
   lobby: 'bar',
-  countdown: 0,
   settings: [
     { id: 'arena', label: 'Arena', options: ARENAS.map((a) => ({ value: a.id, label: a.name })), default: 0 },
     { id: 'rounds', label: 'Rounds', options: [1, 3, 5], default: 3 },
@@ -153,7 +152,7 @@ export function createOnline(room, helpers, o = {}) {
   const match = createMatch(room, {
     rounds: 'rounds',
     roundSeconds: ROUND.seconds,
-    introSeconds: ROUND.intro,
+    introSeconds: 0, // the platform's 3-2-1 is the countdown: at its end the round is on
     roundEndSeconds: ROUND.end,
     resultsSeconds: ROUND.results,
     admit: 'round',
@@ -974,15 +973,6 @@ export function createOnline(room, helpers, o = {}) {
     },
     syncBots() {
       bots.setFill(settings().bots === 'off' ? 0 : 8);
-    },
-    ready(on = true) {
-      match.ready(on);
-    },
-    start() {
-      match.start();
-    },
-    skip() {
-      match.skip();
     },
     myCheeks,
     dispose() {

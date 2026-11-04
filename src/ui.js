@@ -63,7 +63,7 @@ const btn = (act, label, cls = '', arg = '') => `<button class="bis ${cls}" data
 const portrait = (s, mood = null) => hamsterPortrait({ coat: s.coat ?? 0, seat: s.seat ?? 0, hat: s.hat || '', mood });
 function headHtml(s, cls = 'head') {
   const img = portrait(s);
-  return `<span class="${cls}">${img ? `<img alt="" src="${esc(img)}">` : ''}${s.ready ? SVG.tick : ''}${s.host ? SVG.crown : ''}</span>`;
+  return `<span class="${cls}">${img ? `<img alt="" src="${esc(img)}">` : ''}${s.host ? SVG.crown : ''}</span>`;
 }
 const coatIndex = (key) => Math.max(0, COATS.findIndex((c) => c.key === key));
 
@@ -132,6 +132,10 @@ function progHtml(s, t0 = 0.6) {
 export function createUi(root, handlers) {
   let shown = '';
   let html = '';
+  // A click leaves the focus where it was: Enter is the platform's Ready key and mustn't press a biscuit again as well.
+  root.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) e.preventDefault();
+  });
   root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b || b.disabled) return;
@@ -174,16 +178,6 @@ export function createUi(root, handlers) {
   const screens = {
     none() {
       return '';
-    },
-    title(v) {
-      const chips = `${v.level > 1 ? `<span class="chip">Level ${v.level}</span>` : ''}${v.streak ? `<span class="chip">${SVG.flame}${v.streak}</span>` : ''}${v.best ? `<span class="chip">Best ${esc(v.best)}</span>` : ''}`;
-      return `<div class="title">
-        <div class="card logo"><div class="in"><span class="piped l1">More Than</span><span class="piped l2">You Can <em>Chew</em></span></div></div>
-        <div class="play-row">
-          ${btn('play', `Play${v.keys ? ' <span class="key">Space</span>' : ''}`, 'big')}
-          ${chips ? `<div class="chips">${chips}</div>` : ''}
-        </div>
-      </div>`;
     },
     lobby(v) {
       const seatList = v.seats
@@ -258,7 +252,7 @@ export function createUi(root, handlers) {
           <div class="rows">${rows}</div>
           ${v.why ? `<div class="why">${esc(v.why)}</div>` : ''}
           ${xp}
-          <div class="nextin"><span data-live="next">${esc(v.next)}</span>${v.canSkip ? btn('skip', 'Skip', 'small') : ''}</div>
+          <div class="nextin"><span data-live="next">${esc(v.next)}</span></div>
         </div></div>`;
     },
     results(v) {
@@ -268,7 +262,7 @@ export function createUi(root, handlers) {
         podium: v.podium,
         lines: v.lines,
         summary: v.summary,
-        buttons: v.canNext ? btn('next', 'Next', 'big') : `<span class="label" data-live="next">${esc(v.next || '')}</span>`,
+        buttons: `<span class="label" data-live="next">${esc(v.next || '')}</span>`,
       });
     },
     solo(v) {

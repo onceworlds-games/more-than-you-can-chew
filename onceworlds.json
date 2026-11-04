@@ -18,7 +18,6 @@
     { "keys": ["Space", "Click"], "action": "Bump (a short dash)" },
     { "keys": ["Stick"], "action": "Run (touch)" },
     { "keys": ["Bump"], "action": "Bump (touch)" },
-    { "keys": ["Space", "Enter"], "action": "Play" },
     { "keys": ["Esc"], "action": "Pause a Picnic or the Daily" },
     { "keys": ["Wardrobe"], "action": "Wear hats and coats you've earned" }
   ],

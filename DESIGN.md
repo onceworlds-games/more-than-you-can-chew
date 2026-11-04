@@ -17,9 +17,8 @@ POP and spraying everything across the cloth.
 
 | Time | What happens | Hint (2-5 words, once) |
 |---|---|---|
-| 0 s | **Title.** The picnic is alive in 3D: bots gobble and waddle on the blanket under the logo biscuit, the camera drifting at hamster height through the tilt-shift haze. One big **Play** biscuit (Space / Enter). | none |
-| ~2 s | **Lobby.** The camera swoops to your burrow; your hamster (your coat, hat and bandana) can already run, eat practice crumbs and bank them. The lobby card shows the eight seats as portraits, your level, the settings, and Picnics, Daily and Wardrobe. | "Ready!" is the platform's strip |
-| ~4 s | **Intro (4 s).** A biscuit banner drops in: "Round 1 · The classic". 3, 2, 1, "EAT!". A few seeds and a nut lie on your doorstep. | none |
+| 0 s | **Lobby**, as soon as the page is up: no Play to press. The camera is at your burrow; your hamster (your coat, hat and bandana) can already run, eat practice crumbs and bank them. The lobby card shows the eight seats as portraits, your level, the settings, and Picnics, Daily and Wardrobe. | "Ready!" is the platform's strip |
+| ~4 s | Ready, the platform's 3-2-1, and "EAT!": you're at your door and can run at once. A few seeds and a nut lie on your doorstep. | none |
 | ~8 s | First bite: a munch, your pouches puff with a gulp bounce, the cheek ring round your feet starts to fill. Quick bites chain: "Gobble ×3!" floats up and a marimba climbs. | "Run over food", "Gobble chains add up!" |
 | ~12 s | Cheeks at 70: you feel the waddle; the burrow arrow pulses. | "Full? Go home!" |
 | ~18 s | You bank: food arcs out of the burrow onto your heap, chimes count up "+48", the flag's number ticks. | none: the count is the lesson |
@@ -38,7 +37,7 @@ After the round: XP lines tick up, the level bar fills, a new hat or effect drop
 |---|---|---|
 | Move | WASD or arrows, or the mouse: your hamster runs toward the cursor (it stops when the cursor is on it) | The platform's stick (`stick: 'analog'`, zone `wide`): analog speed and direction |
 | Bump (dash) | Space, or click | One button, "Bump" (key Space) |
-| Menus | Click / tap, Enter on the focused biscuit, Esc closes a sheet or pauses a Picnic / the Daily | Tap |
+| Menus | Click / tap, Esc closes a sheet or pauses a Picnic / the Daily | Tap |
 
 That is the whole game: move and one button. Eating and banking happen by touch. Mouse-follow switches on when the mouse
 moves over the game and off when a movement key is pressed, so keyboard players never get dragged. A key held down is one
@@ -151,12 +150,11 @@ cleared after a change):
 - Rounds: 1, 3, 5, default 3;
 - Bots: Off, Easy, Normal, Hard, default Normal.
 
-Nothing starts until everyone has readied: a public server starts itself (no countdown: the game's own 4 s intro is the only
-one); a private server waits for the host's Start (`room.canStart`). Title Play readies you in a public server; in a private
-server the host gets Start and everyone else Ready.
+Nothing starts until everyone has readied on the platform's strip (Enter works too): a public server starts itself, a private
+server waits for the host's Start. The platform's 3-2-1 is the only countdown; the round is on when it ends.
 
-**Rounds.** `createMatch` with `rounds: 'rounds'`, `roundSeconds: 150`, `introSeconds: 4`, `roundEndSeconds: 7`,
-`resultsSeconds: 30` (the host's Next skips it), `admit: 'round'`. Round score = heap; `score(m)` returns the heaps, so the
+**Rounds.** `createMatch` with `rounds: 'rounds'`, `roundSeconds: 150`, `introSeconds: 0`, `roundEndSeconds: 7`,
+`resultsSeconds: 12`, `admit: 'round'`. Round score = heap; `score(m)` returns the heaps, so the
 match total is the sum of heaps. Heaps reset every round. Ties share a place.
 
 **Bots.** `createBots(match, { host, fill, names, think: () => null })` seats them (fill 8, or 0 with Bots Off); the host's page
@@ -343,7 +341,6 @@ Bursting a little more, bail out of a Stuffed trip when a bully is close, dodge 
 Layouts keep clear of `ow.ui.reserved`, the platform's lobby strip and, during play on touch screens, the stick and Bump
 button. Text is at least 15 px, main buttons at least 48 px tall. Panels slide and bounce in; pressing a biscuit takes a bite.
 
-- **Title.** The attract round full screen; the logo biscuit (a bite out of it); Play.
 - **Lobby.** The chosen arena live, your hamster at your burrow, free to practise. Desktop: a biscuit card on the right: your
   level chip and bar (and streak flame), the arena and its twist, the eight seats as portraits in their coats and hats, the
   host's settings (Arena ◀ ▶, Rounds 1/3/5, Bots Off/Easy/Normal/Hard), then Picnics (★ count), Daily (goals done or the
@@ -494,9 +491,8 @@ round runs and nothing throws. The game is about 14 MB (models meshopt-compresse
   is also a hold).
 - **Hamsters wear natural coats plus a seat-coloured bandana with an emblem** instead of one flat colour each: it reads as real
   animals, keeps eight seats distinct for colour-blind players, and makes coats an unlock.
-- **Title Play readies you** in a public server so a stranger is eating within 10 s; the lobby is the live blanket with practice
-  food, so waiting is play.
-- **The game draws its own one countdown** (the room's is 0), inside a 4 s round intro.
+- **The lobby is the first screen and the live blanket with practice food,** so waiting is play.
+- **One countdown:** the platform's 3-2-1. A Picnic or the Daily (solo, no room countdown) opens on a short banner instead.
 - **Added**: the safe porch, 1 s immunity after a hit, a "Bots: Off" setting, the buzzer (unbanked food is lost), the leader's
   crown, and the eight arenas' twists as listed. Heaps reset each round; the match total is the sum.
 - **Bites are shared on a tie** (decided in the build): a piece two hamsters reached within 0.7 s goes into both cheeks, so the
