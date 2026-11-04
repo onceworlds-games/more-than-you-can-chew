@@ -306,7 +306,10 @@ export async function boot() {
   let room = null;
   async function connect() {
     const [r, helpers] = await Promise.all([joining, helpersP]);
-    if (!r || !helpers) return;
+    if (!r || !helpers) {
+      S.noRoom = true;
+      return;
+    }
     room = r;
     try {
       S.net = createOnline(room, helpers, { coat: () => P().coat, outfit: () => encodeOutfit(myOutfit()), now: () => performance.now(), onEvent: (e) => S.netEvents.push(e) });
@@ -1482,7 +1485,7 @@ export async function boot() {
       mySeat,
       stars: starCount(p),
       sheet: S.sheet,
-      standalone: !S.net,
+      standalone: !ow || !!S.noRoom, // on the platform the strip is the start; this is for a page on its own (or no room to be had)
       level: levelBar(),
       streak: liveStreak(p, day),
       goalsDone: goals.filter((g) => g.done).length,
